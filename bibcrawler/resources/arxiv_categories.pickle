@@ -1,0 +1,588 @@
+(dp0
+S'stat'
+p1
+(dp2
+S'subcats'
+p3
+(dp4
+S'ME'
+p5
+S'Methodology'
+p6
+sS'AP'
+p7
+S'Applications'
+p8
+sS'CO'
+p9
+S'Computation'
+p10
+sS'TH'
+p11
+S'Theory'
+p12
+sS'ML'
+p13
+S'Machine Learning'
+p14
+ssS'name'
+p15
+S'Statistics'
+p16
+ssS'math-ph'
+p17
+(dp18
+g15
+S'Mathematical Physics'
+p19
+ssS'hep-ph'
+p20
+(dp21
+g15
+S'High Energy Physics'
+p22
+ssS'nucl-ex'
+p23
+(dp24
+g15
+S'Nuclear Experiment'
+p25
+ssS'q-bio'
+p26
+(dp27
+g3
+(dp28
+S'MN'
+p29
+S'Molecular Networks'
+p30
+sS'BM'
+p31
+S'Biomolecules'
+p32
+sS'NC'
+p33
+S'Neurons and Cognition'
+p34
+sS'TO'
+p35
+S'Tissues and Organs'
+p36
+sS'CB'
+p37
+S'Cell Behavior'
+p38
+sS'SC'
+p39
+S'Subcellular Processes'
+p40
+sS'GN'
+p41
+S'Genomics'
+p42
+sS'OT'
+p43
+S'Other'
+p44
+sS'QM'
+p45
+S'Quantitative Methods'
+p46
+sS'PE'
+p47
+S'Populations and Evolution'
+p48
+ssg15
+S'Quantitative Biology'
+p49
+ssS'nucl-th'
+p50
+(dp51
+g15
+S'Nuclear Theory'
+p52
+ssS'gr-qc'
+p53
+(dp54
+g15
+S'General Relativity and Quantum Cosmology'
+p55
+ssS'cond-mat'
+p56
+(dp57
+g3
+(dp58
+S'supr-con'
+p59
+S'Superconductivity'
+p60
+sS'str-el'
+p61
+S'Strongly Correlated Electrons'
+p62
+sS'dis-nn'
+p63
+S'Disordered Systems and Neural Networks'
+p64
+sS'mtrl-sci'
+p65
+S'Materials Science'
+p66
+sS'other'
+p67
+S'Other'
+p68
+sS'stat-mech'
+p69
+S'Statistical Mechanics'
+p70
+sS'soft'
+p71
+S'Soft Condensed Matter'
+p72
+sS'mes-hall'
+p73
+S'Mesoscopic Systems and Quantum Hall Effect'
+p74
+ssg15
+S'Physics'
+p75
+ssS'astro-ph'
+p76
+(dp77
+g15
+S'Astrophysics'
+p78
+ssS'hep-lat'
+p79
+(dp80
+g15
+S'High Energy Physics'
+p81
+ssS'quant-ph'
+p82
+(dp83
+g15
+S'Quantum Physics'
+p84
+ssS'cs'
+p85
+(dp86
+g3
+(dp87
+S'DL'
+p88
+S'Digital Libraries'
+p89
+sS'DM'
+p90
+S'Discrete Mathematics'
+p91
+sS'DB'
+p92
+S'Databases'
+p93
+sS'DC'
+p94
+S'Distributed; Parallel; and Cluster Computing'
+p95
+sS'HC'
+p96
+S'Human-Computer Interaction'
+p97
+sS'DS'
+p98
+S'Data Structures and Algorithms'
+p99
+sS'LG'
+p100
+S'Learning'
+p101
+sS'LO'
+p102
+S'Logic in Computer Science'
+p103
+sS'NE'
+p104
+S'Neural and Evolutionary Computing'
+p105
+sS'CC'
+p106
+S'Computational Complexity'
+p107
+sS'PF'
+p108
+S'Performance'
+p109
+sS'RO'
+p110
+S'Robotics'
+p111
+sS'PL'
+p112
+S'Programming Languages'
+p113
+sS'GT'
+p114
+S'Computer Science and Game Theory'
+p115
+sS'GR'
+p116
+S'Graphics'
+p117
+sS'CL'
+p118
+S'Computation and Language'
+p119
+sS'AI'
+p120
+S'Artificial Intelligence'
+p121
+sS'IR'
+p122
+S'Information Retrieval'
+p123
+sS'CG'
+p124
+S'Computational Geometry'
+p125
+sS'IT'
+p126
+S'Information Theory'
+p127
+sS'CE'
+p128
+S'Computational Engineering; Finance; and Science'
+p129
+sS'CY'
+p130
+S'Computers and Society'
+p131
+sS'AR'
+p132
+S'Architecture'
+p133
+sS'NI'
+p134
+S'Networking and Internet Architecture'
+p135
+sS'CR'
+p136
+S'Cryptography and Security'
+p137
+sS'GL'
+p138
+S'General Literature'
+p139
+sS'CV'
+p140
+S'Computer Vision and Pattern Recognition'
+p141
+sS'MA'
+p142
+S'Multiagent Systems'
+p143
+sS'OH'
+p144
+S'Other'
+p145
+sS'MM'
+p146
+S'Multimedia'
+p147
+sS'MS'
+p148
+S'Mathematical Software'
+p149
+sS'NA'
+p150
+S'Numerical Analysis'
+p151
+sS'SC'
+p152
+S'Symbolic Computation'
+p153
+sS'OS'
+p154
+S'Operating Systems'
+p155
+sS'SE'
+p156
+S'Software Engineering'
+p157
+sS'SD'
+p158
+S'Sound'
+p159
+ssg15
+S'Computer Science'
+p160
+ssS'hep-ex'
+p161
+(dp162
+g15
+S'High Energy Physics'
+p163
+ssS'hep-th'
+p164
+(dp165
+g15
+S'High Energy Physics'
+p166
+ssS'nlin'
+p167
+(dp168
+g3
+(dp169
+S'PS'
+p170
+S'Pattern Formation and Solitons'
+p171
+sS'SI'
+p172
+S'Exactly Solvable and Integrable Systems'
+p173
+sS'CG'
+p174
+S'Cellular Automata and Lattice Gases'
+p175
+sS'AO'
+p176
+S'Adaptation and Self-Organizing Systems'
+p177
+sS'CD'
+p178
+S'Chaotic Dynamics'
+p179
+ssg15
+S'Nonlinear Sciences'
+p180
+ssS'physics'
+p181
+(dp182
+g3
+(dp183
+S'soc-ph'
+p184
+S'Physics and Society'
+p185
+sS'class-ph'
+p186
+S'Classical Physics'
+p187
+sS'plasm-ph'
+p188
+S'Plasma Physics'
+p189
+sS'data-an'
+p190
+S'Data Analysis; Statistics and Probability'
+p191
+sS'pop-ph'
+p192
+S'Popular Physics'
+p193
+sS'comp-ph'
+p194
+S'Computational Physics'
+p195
+sS'hist-ph'
+p196
+S'History of Physics'
+p197
+sS'ed-ph'
+p198
+S'Physics Education'
+p199
+sS'ao-ph'
+p200
+S'Atmospheric and Oceanic Physics'
+p201
+sS'optics'
+p202
+S'Optics'
+p203
+sS'atom-ph'
+p204
+S'Atomic Physics'
+p205
+sS'atm-clus'
+p206
+S'Atomic and Molecular Clusters'
+p207
+sS'geo-ph'
+p208
+S'Geophysics'
+p209
+sS'chem-ph'
+p210
+S'Chemical Physics'
+p211
+sS'gen-ph'
+p212
+S'General Physics'
+p213
+sS'space-ph'
+p214
+S'Space Physics'
+p215
+sS'flu-dyn'
+p216
+S'Fluid Dynamics'
+p217
+sS'acc-ph'
+p218
+S'Accelerator Physics'
+p219
+sS'ins-det'
+p220
+S'Instrumentation and Detectors'
+p221
+sS'med-ph'
+p222
+S'Medical Physics'
+p223
+sS'bio-ph'
+p224
+S'Biological Physics'
+p225
+ssg15
+S'Physics'
+p226
+ssS'math'
+p227
+(dp228
+g3
+(dp229
+S'NA'
+p230
+S'Numerical Analysis'
+p231
+sS'DG'
+p232
+S'Differential Geometry'
+p233
+sS'FA'
+p234
+S'Functional Analysis'
+p235
+sS'HO'
+p236
+S'History and Overview'
+p237
+sS'DS'
+p238
+S'Dynamical Systems'
+p239
+sS'PR'
+p240
+S'Probability'
+p241
+sS'LO'
+p242
+S'Logic'
+p243
+sS'RA'
+p244
+S'Rings and Algebras'
+p245
+sS'NT'
+p246
+S'Number Theory'
+p247
+sS'RT'
+p248
+S'Representation Theory'
+p249
+sS'AC'
+p250
+S'Commutative Algebra'
+p251
+sS'GT'
+p252
+S'Geometric Topology'
+p253
+sS'CO'
+p254
+S'Combinatorics'
+p255
+sS'GR'
+p256
+S'Group Theory'
+p257
+sS'AG'
+p258
+S'Algebraic Geometry'
+p259
+sS'CA'
+p260
+S'Classical Analysis and ODEs'
+p261
+sS'IT'
+p262
+S'Information Theory'
+p263
+sS'AP'
+p264
+S'Analysis of PDEs'
+p265
+sS'AT'
+p266
+S'Algebraic Topology'
+p267
+sS'GN'
+p268
+S'General Topology'
+p269
+sS'GM'
+p270
+S'General Mathematics'
+p271
+sS'CV'
+p272
+S'Complex Variables'
+p273
+sS'CT'
+p274
+S'Category Theory'
+p275
+sS'MG'
+p276
+S'Metric Geometry'
+p277
+sS'SP'
+p278
+S'Spectral Theory'
+p279
+sS'OC'
+p280
+S'Optimization and Control'
+p281
+sS'OA'
+p282
+S'Operator Algebras'
+p283
+sS'ST'
+p284
+S'Statistics'
+p285
+sS'QA'
+p286
+S'Quantum Algebra'
+p287
+sS'MP'
+p288
+S'Mathematical Physics'
+p289
+sS'KT'
+p290
+S'K-Theory and Homology'
+p291
+sS'SG'
+p292
+S'Symplectic Geometry'
+p293
+ssg15
+S'Mathematics'
+p294
+ss.
