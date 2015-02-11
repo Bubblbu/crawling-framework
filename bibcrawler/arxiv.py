@@ -3,28 +3,27 @@
 
 from __future__ import print_function, division
 from pprint import pprint
-import cPickle as pickle
-from collections import defaultdict
-import csv
-import re
-import urllib2
 
-import lxml.etree as ET
-from urlgrabber.keepalive import HTTPHandler
+import rpy2.rinterface as ri
+ri.set_initoptions(('rpy2', '--verbose', '--no-save'))
+ri.initr()
+
+from rpy2.robjects.packages import importr
+importr("aRxiv")
+
+from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
+
+import pandas as pd
+import pandas.rpy.common as com
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-
-# keepalive_handler = HTTPHandler()
-# opener = urllib2.build_opener(keepalive_handler)
-# urllib2.install_opener(opener)
-
-""" arXiv categories + subcategories - read in from textfile """
+# """ arXiv categories + subcategories - read in from textfile """
 # with open("resources/arxiv_categories.pickle", 'rb') as f:
 # cats = pickle.load(f)
 
-""" arXiv categories + subcategories - hardcoded dict """
-cats = {'astro-ph': {'name': 'Astrophysics'},
+#: All arxiv categories and their subcategotiers
+ARXIV_CATS = {'astro-ph': {'name': 'Astrophysics'},
         'cond-mat': {'name': 'Physics',
                      'subcats': {'dis-nn': 'Disordered Systems and Neural Networks',
                                  'mes-hall': 'Mesoscopic Systems and Quantum Hall Effect',
@@ -160,95 +159,50 @@ cats = {'astro-ph': {'name': 'Astrophysics'},
                              'TH': 'Theory'}}}
 
 
-def arxiv_category_crawler(subcategory):
-    item_list = []
-    found_entries = 0
-    start = 0
-    results_per_page = 500
+def r_arxiv_crawler(subcategory, limit=10, batchsize=100, submission_range=None, update_range=None):
+    """
+    This is a python wrapper for the aRxiv "arxiv_search" function.
 
-    doi_count = 0
+    If submission_range or update_range are given, the results are filtered according to the date ranges.
 
-    print("\n", subcategory)
+    :param subcategory: The subcategory to use. NOT "stat" -> USE "stat.AP" etc...
+    :type subcategory: str.
+    :param limit: Max number of results.
+    :type limit: int.
+    :param batchsize: Number of queries per request.
+    :type batchsize: int.
+    :param submission_range: The range of submission dates.
+    :type submission_range: Tuple (start,end).
+    :param update_range: The range of last-update dates.
+    :type update_range: Tuple (start,end).
 
-    while True:
-        print("------ {} out of {} ---------".format(start, start + results_per_page))
-        url = "http://export.arxiv.org/api/query?search_query=cat:{}&start={}&max_results={}".format(subcategory, start,
-                                                                                                     results_per_page)
-        xml = urllib2.urlopen(url).read()
-        et = ET.XML(xml)
+    :returns:  pd.DataFrame -- the resulting data frame.
+    """
 
-        entries = et.xpath(anywhere, name='entry')
+    with open('arxiv_crawler.R', 'r') as f:
+        string = ''.join(f.readlines())
+    arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
 
-        if len(entries) is 0:
-            break
-        else:
-            for entry in entries:
-                print(entry.text)
-                arxiv_id = entry.xpath(here, name='id')
-                doi_result = entry.xpath(here, name='doi')
-                title = entry.xpath(here, name='title')
-                date = entry.xpath(here, name='published')
-                journal_ref = entry.xpath(here, name='journal_ref')
-                name_entries = entry.xpath(here, name='name')
-                prim_cat = entry.xpath(here, name='arxiv:primary_category')
-                check = lambda x: '' if not x else x[0].text.strip()
+    if submission_range and not update_range:
+        result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
+                                                             submittedDateStart=submission_range[0],
+                                                             submittedDateEnd=submission_range[1])
+    elif update_range and not submission_range:
+        result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
+                                                         updatedStart=update_range[0],
+                                                         updatedEnd=update_range[1])
+    elif submission_range and update_range:
+        result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit, batchsize=batchsize,
+                                                                    submittedDateStart=submission_range[0],
+                                                                    submittedDateEnd=submission_range[1],
+                                                                    updatedStart=update_range[0],
+                                                                    updatedEnd=update_range[1])
+    else:
+        result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
 
-                arxiv_id = check(arxiv_id)
-                doi_result = check(doi_result)
-                title = check(title)
-                journal_ref = check(journal_ref)
-
-                date = check(date)
-                date = date[:10].split("-")
-                year = int(date[0])
-                month = int(date[1])
-                day = int(date[2])
-
-                arxiv_id = re.findall("http://arxiv.org/abs/(.*)v[0-9]*", arxiv_id)[0]
-                print(arxiv_id)
-
-                authors = []
-                for name in name_entries:
-                    authors.append(name.text)
-
-                item_list.append({'arxiv_id': arxiv_id,
-                                  'doi': doi_result,
-                                  'title': title,
-                                  'year': year,
-                                  'month': month,
-                                  'day': day,
-                                  'journal': journal_ref,
-                                  'authors': authors})
-
-                if doi_result:
-                    doi_count += 1
-
-            print("\t{} DOIs found in {}".format(doi_count, subcategory))
-            found_entries += len(entries)
-            # pprint(item_list, indent=5)
-
-        start += results_per_page
-
-    print("\nFound DOI's --- {} from {} results".format(doi_count, found_entries))
-
-    with open("{}{}.pkl".format(PICKLE_DIR, subcategory), "wb") as f:
-        pickle.dump(item_list, f)
-
-    return item_list
+    return com.convert_robj(result)
 
 
-    # def get_metadata_from_arxiv(category):
-    # list_of_cat_dois = []
-    # for subcat in categories[category]:
-    #     try:
-    #         with open("{}{}.pkl".format(PICKLE_DIR, subcat), "rb") as f:
-    #             loaded = pickle.load(f)
-    #         list_of_cat_dois.append(loaded)
-    #         print "\nLoaded pre-fetched {}.pkl".format(subcat)
-    #     except IOError:
-    #         print "\n{}.pkl not found. Crawling...".format(subcat)
-    #         list_of_cat_dois.append(arxiv_category_crawler(subcat))
-    #     except EOFError:
-    #         pass
-
-    # return list_of_cat_dois
+if __name__ == "__main__":
+    data = r_arxiv_crawler("stat.AP", limit=30, submission_range=(1990, 2014))
+    pprint(data.title)
