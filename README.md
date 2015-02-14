@@ -1,6 +1,17 @@
 # Bibliometric crawling framework
 
-In progress...
+A python framework to crawl various bibliometric sources.
+
+## R/rpy2 - Setup
+
+In order to run the arxiv-crawler both R and rpy2 will need to be installed and setup correctly.
+In case rpy2 fails to find the package "aRxiv", the following steps should help:
+
+* Install the R-package "aRxiv" using install.packages("aRxiv") within a R-session
+* Determine the locations of your R-libraries with .libPath() and ...
+* ... add these locations to the variable **R_LIBS** (*"location1;location2;..."*)
+* Add the variable **R_HOME** to the root of your R distro, e.g.: *"C:\Program Files\R\R-3.1.2"*
+* Add the variable **R_USER** with your user-name as the value.
 
 ## Author
 
