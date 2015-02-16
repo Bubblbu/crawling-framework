@@ -1,4 +1,5 @@
 library(aRxiv)
+
 search_arxiv_submission_range <- function(subcat,
                          submittedDateStart, submittedDateEnd,
                          limit = 10, batchsize = 100){
