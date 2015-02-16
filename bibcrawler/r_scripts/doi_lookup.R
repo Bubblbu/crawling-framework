@@ -8,7 +8,6 @@ crossref <- function(author, title, submission){
   
   query_string = paste(title,author,sep="+")
   query_string = gsub("[^a-zA-Z0-9+ -]","",query_string)
-  print(query_string)
   
   # Currently filtering a window of +/- 1 year around the submission date.
   r = cr_works(query=query_string,

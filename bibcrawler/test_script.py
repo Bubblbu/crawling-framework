@@ -6,10 +6,6 @@ __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 from arxiv import r_arxiv_crawler
 from doi_lookup import doi_lookup
 
-data = r_arxiv_crawler("stat.AP", limit=10)
-
-print("check")
-
+data = r_arxiv_crawler("stat.AP", limit=50)
+print("Got arxiv")
 dois = doi_lookup(data.authors, data.title, data.submitted)
-
-pprint(dois)
