@@ -4,13 +4,6 @@
 from __future__ import print_function, division
 from pprint import pprint
 
-import rpy2.rinterface as ri
-ri.set_initoptions(('rpy2', '--verbose', '--no-save'))
-ri.initr()
-
-from rpy2.robjects.packages import importr
-importr("aRxiv")
-
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 
 import pandas as pd
@@ -179,7 +172,7 @@ def r_arxiv_crawler(subcategory, limit=10, batchsize=100, submission_range=None,
     :returns:  pd.DataFrame -- the resulting data frame.
     """
 
-    with open('arxiv_crawler.R', 'r') as f:
+    with open('r_scripts/arxiv.R', 'r') as f:
         string = ''.join(f.readlines())
     arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
 
@@ -201,8 +194,3 @@ def r_arxiv_crawler(subcategory, limit=10, batchsize=100, submission_range=None,
         result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
 
     return com.convert_robj(result)
-
-
-if __name__ == "__main__":
-    data = r_arxiv_crawler("stat.AP", limit=30, submission_range=(1990, 2014))
-    pprint(data.title)
