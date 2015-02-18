@@ -2,7 +2,7 @@
 
 A python framework to crawl various bibliometric sources.
 
-## Overview?
+## Overview
 
 1. **Source** - Inital data acquisition
 
