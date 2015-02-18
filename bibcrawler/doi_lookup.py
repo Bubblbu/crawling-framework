@@ -14,7 +14,50 @@ import re
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-def doi_lookup(list_of_authors, list_of_titles, list_of_submission_dates, mode='all'):
+#: Levenshtein Ratio - Schloegl et al, 2014
+LR = 1 / 15.83
+
+# Regex for 'only alpha-numeric'
+regex_alphanum = r"[^a-zA-Z0-9]"
+regex_mult_whitespace = r"\s{2,}"
+
+
+def crossref_lookup(authors, titles, submitted):
+    cr_lookup = None
+
+    with open('r_scripts/doi_lookup.R', 'r') as f:
+        string = ''.join(f.readlines())
+    doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
+
+    for author, title, date in zip(authors, titles, submitted):
+        if cr_lookup is None:
+            cr_lookup = com.convert_robj(doi_lookuper.crossref(author, title, date))
+        else:
+            cr_lookup = pd.concat([cr_lookup, com.convert_robj(doi_lookuper.crossref(author, title, date))])
+
+    cr_dois = []
+    cr_score = []
+    for original, found, doi in zip(titles, cr_lookup.title, cr_lookup.DOI):
+        original = re.sub(regex_alphanum, " ", original).strip()
+        original = re.sub(regex_mult_whitespace, " ", original).lower()
+
+        found = re.sub(regex_alphanum, " ", found).strip()
+        found = re.sub(regex_mult_whitespace, " ", found).lower()
+
+        ld = distance(unicode(original), unicode(found))
+        max_len = max(len(original), len(found))
+
+        if ld / max_len <= LR:
+            cr_dois.append(doi)
+        else:
+            cr_dois.append(None)
+
+        cr_score.append(ld / max_len)
+
+    return cr_dois, cr_score
+
+
+def doi_lookup(arxiv_df, mode='all'):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -22,45 +65,25 @@ def doi_lookup(list_of_authors, list_of_titles, list_of_submission_dates, mode='
 
     Possible candidate documents are matched with original arxiv-documents using Levenshtein Ratio (Schloegl et al)
 
-    :param list_of_authors: List of authors.
-    :param list_of_titles: List of titles.
-    :param list_of_submission_dates: List of submission dates.
+    :param arxiv_dataframe: The arxiv dataframe that needs to be enriched with more DOIs
+    :type arxiv_dataframe: pd.DataFrame
 
     :returns: pd.DataFrame - newly found DOI's with original indices
     """
 
-    with open('r_scripts/doi_lookup.R', 'r') as f:
-        string = ''.join(f.readlines())
-    doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
+    extended_df = arxiv_df.copy(deep=True)
+    cr_dois = []
 
-    result = None
     if mode == 'all':
-        for author, title, date in zip(list_of_authors, list_of_titles, list_of_submission_dates):
-            if result is None:
-                result = com.convert_robj(doi_lookuper.crossref(author, title, date))
-            else:
-                result = pd.concat([result, com.convert_robj(doi_lookuper.crossref(author, title, date))])
+        cr_dois, cr_score = crossref_lookup(arxiv_df.authors, arxiv_df.title, arxiv_df.submitted)
 
-    # TODO: Implement Levenshtein Ratio before returning results.
+    elif mode == 'crossref':
+        cr_dois = crossref_lookup(arxiv_df.authors, arxiv_df.titles, arxiv_df.submitted)
 
-    for original, found in zip(list_of_titles, result.title):
-        original = re.sub(r"[^a-zA-Z0-9]", " ", original).strip()
-        original = re.sub(r"\s{2,}", " ", original).lower()
-        found = re.sub(r"[^a-zA-Z0-9]", " ", found).strip()
-        found = re.sub(r"\s{2,}", " ", found).lower()
+    elif mode == 'datacite':
+        pass
 
-        ld = distance(unicode(original), unicode(found))
-        max_len = max(len(original),len(found))
+    extended_df['crossref_doi'] = pd.Series(cr_dois)
+    extended_df['crossref_score'] = pd.Series(cr_score)
 
-        if ld/max_len <= 1/15.83:
-            print("---- MATCH ---- ", ld/max_len)
-            print(original)
-            print(found)
-            print("\n\n")
-        else:
-            print("---- FAIL ---- ", ld/max_len)
-            print(original)
-            print(found)
-            print("\n\n")
-
-    return result
+    return extended_df
