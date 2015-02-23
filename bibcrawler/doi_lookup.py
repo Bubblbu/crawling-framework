@@ -36,7 +36,7 @@ def crossref_lookup(authors, titles, submitted):
             cr_lookup = pd.concat([cr_lookup, com.convert_robj(doi_lookuper.crossref(author, title, date))])
 
     cr_dois = []
-    cr_score = []
+    levenshtein_ratio = []
     for original, found, doi in zip(titles, cr_lookup.title, cr_lookup.DOI):
         original = re.sub(regex_alphanum, " ", original).strip()
         original = re.sub(regex_mult_whitespace, " ", original).lower()
@@ -52,9 +52,9 @@ def crossref_lookup(authors, titles, submitted):
         else:
             cr_dois.append(None)
 
-        cr_score.append(ld / max_len)
+        levenshtein_ratio.append(ld / max_len)
 
-    return cr_dois, cr_score
+    return cr_dois, levenshtein_ratio
 
 
 def doi_lookup(arxiv_df, mode='all'):
@@ -65,17 +65,18 @@ def doi_lookup(arxiv_df, mode='all'):
 
     Possible candidate documents are matched with original arxiv-documents using Levenshtein Ratio (Schloegl et al)
 
-    :param arxiv_dataframe: The arxiv dataframe that needs to be enriched with more DOIs
-    :type arxiv_dataframe: pd.DataFrame
+    :param arxiv_df: The arxiv dataframe that needs to be enriched with more DOIs
+    :type arxiv_df: pd.DataFrame
 
     :returns: pd.DataFrame - newly found DOI's with original indices
     """
 
     extended_df = arxiv_df.copy(deep=True)
     cr_dois = []
+    levenshtein_ratio = []
 
     if mode == 'all':
-        cr_dois, cr_score = crossref_lookup(arxiv_df.authors, arxiv_df.title, arxiv_df.submitted)
+        cr_dois, levenshtein_ratio = crossref_lookup(arxiv_df.authors, arxiv_df.title, arxiv_df.submitted)
 
     elif mode == 'crossref':
         cr_dois = crossref_lookup(arxiv_df.authors, arxiv_df.titles, arxiv_df.submitted)
@@ -84,6 +85,6 @@ def doi_lookup(arxiv_df, mode='all'):
         pass
 
     extended_df['crossref_doi'] = pd.Series(cr_dois)
-    extended_df['crossref_score'] = pd.Series(cr_score)
+    extended_df['levenshtein_ratio'] = pd.Series(levenshtein_ratio)
 
     return extended_df

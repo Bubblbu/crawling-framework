@@ -9,157 +9,159 @@ from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import pandas as pd
 import pandas.rpy.common as com
 
+import time
+
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
 # """ arXiv categories + subcategories - read in from textfile """
 # with open("resources/arxiv_categories.pickle", 'rb') as f:
 # cats = pickle.load(f)
 
-#: All arxiv categories and their subcategotiers
+#: All arxiv categories and their subcategories
 ARXIV_CATS = {'astro-ph': {'name': 'Astrophysics'},
-        'cond-mat': {'name': 'Physics',
-                     'subcats': {'dis-nn': 'Disordered Systems and Neural Networks',
-                                 'mes-hall': 'Mesoscopic Systems and Quantum Hall Effect',
-                                 'mtrl-sci': 'Materials Science',
-                                 'other': 'Other',
-                                 'soft': 'Soft Condensed Matter',
-                                 'stat-mech': 'Statistical Mechanics',
-                                 'str-el': 'Strongly Correlated Electrons',
-                                 'supr-con': 'Superconductivity'}},
-        'cs': {'name': 'Computer Science',
-               'subcats': {'AI': 'Artificial Intelligence',
-                           'AR': 'Architecture',
-                           'CC': 'Computational Complexity',
-                           'CE': 'Computational Engineering; Finance; and Science',
-                           'CG': 'Computational Geometry',
-                           'CL': 'Computation and Language',
-                           'CR': 'Cryptography and Security',
-                           'CV': 'Computer Vision and Pattern Recognition',
-                           'CY': 'Computers and Society',
-                           'DB': 'Databases',
-                           'DC': 'Distributed; Parallel; and Cluster Computing',
-                           'DL': 'Digital Libraries',
-                           'DM': 'Discrete Mathematics',
-                           'DS': 'Data Structures and Algorithms',
-                           'GL': 'General Literature',
-                           'GR': 'Graphics',
-                           'GT': 'Computer Science and Game Theory',
-                           'HC': 'Human-Computer Interaction',
-                           'IR': 'Information Retrieval',
-                           'IT': 'Information Theory',
-                           'LG': 'Learning',
-                           'LO': 'Logic in Computer Science',
-                           'MA': 'Multiagent Systems',
-                           'MM': 'Multimedia',
-                           'MS': 'Mathematical Software',
-                           'NA': 'Numerical Analysis',
-                           'NE': 'Neural and Evolutionary Computing',
-                           'NI': 'Networking and Internet Architecture',
-                           'OH': 'Other',
-                           'OS': 'Operating Systems',
-                           'PF': 'Performance',
-                           'PL': 'Programming Languages',
-                           'RO': 'Robotics',
-                           'SC': 'Symbolic Computation',
-                           'SD': 'Sound',
-                           'SE': 'Software Engineering'}},
-        'gr-qc': {'name': 'General Relativity and Quantum Cosmology'},
-        'hep-ex': {'name': 'High Energy Physics'},
-        'hep-lat': {'name': 'High Energy Physics'},
-        'hep-ph': {'name': 'High Energy Physics'},
-        'hep-th': {'name': 'High Energy Physics'},
-        'math': {'name': 'Mathematics',
-                 'subcats': {'AC': 'Commutative Algebra',
-                             'AG': 'Algebraic Geometry',
-                             'AP': 'Analysis of PDEs',
-                             'AT': 'Algebraic Topology',
-                             'CA': 'Classical Analysis and ODEs',
-                             'CO': 'Combinatorics',
-                             'CT': 'Category Theory',
-                             'CV': 'Complex Variables',
-                             'DG': 'Differential Geometry',
-                             'DS': 'Dynamical Systems',
-                             'FA': 'Functional Analysis',
-                             'GM': 'General Mathematics',
-                             'GN': 'General Topology',
-                             'GR': 'Group Theory',
-                             'GT': 'Geometric Topology',
-                             'HO': 'History and Overview',
-                             'IT': 'Information Theory',
-                             'KT': 'K-Theory and Homology',
-                             'LO': 'Logic',
-                             'MG': 'Metric Geometry',
-                             'MP': 'Mathematical Physics',
-                             'NA': 'Numerical Analysis',
-                             'NT': 'Number Theory',
-                             'OA': 'Operator Algebras',
-                             'OC': 'Optimization and Control',
-                             'PR': 'Probability',
-                             'QA': 'Quantum Algebra',
-                             'RA': 'Rings and Algebras',
-                             'RT': 'Representation Theory',
-                             'SG': 'Symplectic Geometry',
-                             'SP': 'Spectral Theory',
-                             'ST': 'Statistics'}},
-        'math-ph': {'name': 'Mathematical Physics'},
-        'nlin': {'name': 'Nonlinear Sciences',
-                 'subcats': {'AO': 'Adaptation and Self-Organizing Systems',
-                             'CD': 'Chaotic Dynamics',
-                             'CG': 'Cellular Automata and Lattice Gases',
-                             'PS': 'Pattern Formation and Solitons',
-                             'SI': 'Exactly Solvable and Integrable Systems'}},
-        'nucl-ex': {'name': 'Nuclear Experiment'},
-        'nucl-th': {'name': 'Nuclear Theory'},
-        'physics': {'name': 'Physics',
-                    'subcats': {'acc-ph': 'Accelerator Physics',
-                                'ao-ph': 'Atmospheric and Oceanic Physics',
-                                'atm-clus': 'Atomic and Molecular Clusters',
-                                'atom-ph': 'Atomic Physics',
-                                'bio-ph': 'Biological Physics',
-                                'chem-ph': 'Chemical Physics',
-                                'class-ph': 'Classical Physics',
-                                'comp-ph': 'Computational Physics',
-                                'data-an': 'Data Analysis; Statistics and Probability',
-                                'ed-ph': 'Physics Education',
-                                'flu-dyn': 'Fluid Dynamics',
-                                'gen-ph': 'General Physics',
-                                'geo-ph': 'Geophysics',
-                                'hist-ph': 'History of Physics',
-                                'ins-det': 'Instrumentation and Detectors',
-                                'med-ph': 'Medical Physics',
-                                'optics': 'Optics',
-                                'plasm-ph': 'Plasma Physics',
-                                'pop-ph': 'Popular Physics',
-                                'soc-ph': 'Physics and Society',
-                                'space-ph': 'Space Physics'}},
-        'q-bio': {'name': 'Quantitative Biology',
-                  'subcats': {'BM': 'Biomolecules',
-                              'CB': 'Cell Behavior',
-                              'GN': 'Genomics',
-                              'MN': 'Molecular Networks',
-                              'NC': 'Neurons and Cognition',
-                              'OT': 'Other',
-                              'PE': 'Populations and Evolution',
-                              'QM': 'Quantitative Methods',
-                              'SC': 'Subcellular Processes',
-                              'TO': 'Tissues and Organs'}},
-        'quant-ph': {'name': 'Quantum Physics'},
-        'stat': {'name': 'Statistics',
-                 'subcats': {'AP': 'Applications',
-                             'CO': 'Computation',
-                             'ME': 'Methodology',
-                             'ML': 'Machine Learning',
-                             'TH': 'Theory'}}}
+              'cond-mat': {'name': 'Physics',
+                           'subcats': {'dis-nn': 'Disordered Systems and Neural Networks',
+                                       'mes-hall': 'Mesoscopic Systems and Quantum Hall Effect',
+                                       'mtrl-sci': 'Materials Science',
+                                       'other': 'Other',
+                                       'soft': 'Soft Condensed Matter',
+                                       'stat-mech': 'Statistical Mechanics',
+                                       'str-el': 'Strongly Correlated Electrons',
+                                       'supr-con': 'Superconductivity'}},
+              'cs': {'name': 'Computer Science',
+                     'subcats': {'AI': 'Artificial Intelligence',
+                                 'AR': 'Architecture',
+                                 'CC': 'Computational Complexity',
+                                 'CE': 'Computational Engineering; Finance; and Science',
+                                 'CG': 'Computational Geometry',
+                                 'CL': 'Computation and Language',
+                                 'CR': 'Cryptography and Security',
+                                 'CV': 'Computer Vision and Pattern Recognition',
+                                 'CY': 'Computers and Society',
+                                 'DB': 'Databases',
+                                 'DC': 'Distributed; Parallel; and Cluster Computing',
+                                 'DL': 'Digital Libraries',
+                                 'DM': 'Discrete Mathematics',
+                                 'DS': 'Data Structures and Algorithms',
+                                 'GL': 'General Literature',
+                                 'GR': 'Graphics',
+                                 'GT': 'Computer Science and Game Theory',
+                                 'HC': 'Human-Computer Interaction',
+                                 'IR': 'Information Retrieval',
+                                 'IT': 'Information Theory',
+                                 'LG': 'Learning',
+                                 'LO': 'Logic in Computer Science',
+                                 'MA': 'Multiagent Systems',
+                                 'MM': 'Multimedia',
+                                 'MS': 'Mathematical Software',
+                                 'NA': 'Numerical Analysis',
+                                 'NE': 'Neural and Evolutionary Computing',
+                                 'NI': 'Networking and Internet Architecture',
+                                 'OH': 'Other',
+                                 'OS': 'Operating Systems',
+                                 'PF': 'Performance',
+                                 'PL': 'Programming Languages',
+                                 'RO': 'Robotics',
+                                 'SC': 'Symbolic Computation',
+                                 'SD': 'Sound',
+                                 'SE': 'Software Engineering'}},
+              'gr-qc': {'name': 'General Relativity and Quantum Cosmology'},
+              'hep-ex': {'name': 'High Energy Physics'},
+              'hep-lat': {'name': 'High Energy Physics'},
+              'hep-ph': {'name': 'High Energy Physics'},
+              'hep-th': {'name': 'High Energy Physics'},
+              'math': {'name': 'Mathematics',
+                       'subcats': {'AC': 'Commutative Algebra',
+                                   'AG': 'Algebraic Geometry',
+                                   'AP': 'Analysis of PDEs',
+                                   'AT': 'Algebraic Topology',
+                                   'CA': 'Classical Analysis and ODEs',
+                                   'CO': 'Combinatorics',
+                                   'CT': 'Category Theory',
+                                   'CV': 'Complex Variables',
+                                   'DG': 'Differential Geometry',
+                                   'DS': 'Dynamical Systems',
+                                   'FA': 'Functional Analysis',
+                                   'GM': 'General Mathematics',
+                                   'GN': 'General Topology',
+                                   'GR': 'Group Theory',
+                                   'GT': 'Geometric Topology',
+                                   'HO': 'History and Overview',
+                                   'IT': 'Information Theory',
+                                   'KT': 'K-Theory and Homology',
+                                   'LO': 'Logic',
+                                   'MG': 'Metric Geometry',
+                                   'MP': 'Mathematical Physics',
+                                   'NA': 'Numerical Analysis',
+                                   'NT': 'Number Theory',
+                                   'OA': 'Operator Algebras',
+                                   'OC': 'Optimization and Control',
+                                   'PR': 'Probability',
+                                   'QA': 'Quantum Algebra',
+                                   'RA': 'Rings and Algebras',
+                                   'RT': 'Representation Theory',
+                                   'SG': 'Symplectic Geometry',
+                                   'SP': 'Spectral Theory',
+                                   'ST': 'Statistics'}},
+              'math-ph': {'name': 'Mathematical Physics'},
+              'nlin': {'name': 'Nonlinear Sciences',
+                       'subcats': {'AO': 'Adaptation and Self-Organizing Systems',
+                                   'CD': 'Chaotic Dynamics',
+                                   'CG': 'Cellular Automata and Lattice Gases',
+                                   'PS': 'Pattern Formation and Solitons',
+                                   'SI': 'Exactly Solvable and Integrable Systems'}},
+              'nucl-ex': {'name': 'Nuclear Experiment'},
+              'nucl-th': {'name': 'Nuclear Theory'},
+              'physics': {'name': 'Physics',
+                          'subcats': {'acc-ph': 'Accelerator Physics',
+                                      'ao-ph': 'Atmospheric and Oceanic Physics',
+                                      'atm-clus': 'Atomic and Molecular Clusters',
+                                      'atom-ph': 'Atomic Physics',
+                                      'bio-ph': 'Biological Physics',
+                                      'chem-ph': 'Chemical Physics',
+                                      'class-ph': 'Classical Physics',
+                                      'comp-ph': 'Computational Physics',
+                                      'data-an': 'Data Analysis; Statistics and Probability',
+                                      'ed-ph': 'Physics Education',
+                                      'flu-dyn': 'Fluid Dynamics',
+                                      'gen-ph': 'General Physics',
+                                      'geo-ph': 'Geophysics',
+                                      'hist-ph': 'History of Physics',
+                                      'ins-det': 'Instrumentation and Detectors',
+                                      'med-ph': 'Medical Physics',
+                                      'optics': 'Optics',
+                                      'plasm-ph': 'Plasma Physics',
+                                      'pop-ph': 'Popular Physics',
+                                      'soc-ph': 'Physics and Society',
+                                      'space-ph': 'Space Physics'}},
+              'q-bio': {'name': 'Quantitative Biology',
+                        'subcats': {'BM': 'Biomolecules',
+                                    'CB': 'Cell Behavior',
+                                    'GN': 'Genomics',
+                                    'MN': 'Molecular Networks',
+                                    'NC': 'Neurons and Cognition',
+                                    'OT': 'Other',
+                                    'PE': 'Populations and Evolution',
+                                    'QM': 'Quantitative Methods',
+                                    'SC': 'Subcellular Processes',
+                                    'TO': 'Tissues and Organs'}},
+              'quant-ph': {'name': 'Quantum Physics'},
+              'stat': {'name': 'Statistics',
+                       'subcats': {'AP': 'Applications',
+                                   'CO': 'Computation',
+                                   'ME': 'Methodology',
+                                   'ML': 'Machine Learning',
+                                   'TH': 'Theory'}}}
 
 
-def r_arxiv_crawler(subcategory, limit=10, batchsize=100, submission_range=None, update_range=None):
+def r_arxiv_crawler(subcategories, limit=10, batchsize=100, submission_range=None, update_range=None):
     """
     This is a python wrapper for the aRxiv "arxiv_search" function.
 
     If submission_range or update_range are given, the results are filtered according to the date ranges.
 
-    :param subcategory: The subcategory to use. NOT "stat" -> USE "stat.AP" etc...
-    :type subcategory: str.
+    :param subcategories: The subcategory to use. NOT "stat" -> USE "stat.AP" etc...
+    :type subcategories: list of str.
     :param limit: Max number of results.
     :type limit: int.
     :param batchsize: Number of queries per request.
@@ -172,25 +174,41 @@ def r_arxiv_crawler(subcategory, limit=10, batchsize=100, submission_range=None,
     :returns:  pd.DataFrame -- the resulting data frame.
     """
 
+    # Load r-script
     with open('r_scripts/arxiv.R', 'r') as f:
         string = ''.join(f.readlines())
     arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
 
-    if submission_range and not update_range:
-        result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
-                                                             submittedDateStart=submission_range[0],
-                                                             submittedDateEnd=submission_range[1])
-    elif update_range and not submission_range:
-        result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
-                                                         updatedStart=update_range[0],
-                                                         updatedEnd=update_range[1])
-    elif submission_range and update_range:
-        result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit, batchsize=batchsize,
-                                                                    submittedDateStart=submission_range[0],
-                                                                    submittedDateEnd=submission_range[1],
-                                                                    updatedStart=update_range[0],
-                                                                    updatedEnd=update_range[1])
-    else:
-        result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
+    # Setup logging
+    ts = time.time()
 
-    return com.convert_robj(result)
+    # Return variables
+    arxic_counts = []
+    arxiv_results = pd.DataFrame()
+
+    for subcategory in subcategories:
+        arxic_counts.append(arxiv_crawler.get_cat_count(subcategory))
+
+        if submission_range and not update_range:
+            result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
+                                                                 submittedDateStart=submission_range[0],
+                                                                 submittedDateEnd=submission_range[1])
+
+        elif update_range and not submission_range:
+            result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
+                                                             updatedStart=update_range[0],
+                                                             updatedEnd=update_range[1])
+
+        elif submission_range and update_range:
+            result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit, batchsize=batchsize,
+                                                                        submittedDateStart=submission_range[0],
+                                                                        submittedDateEnd=submission_range[1],
+                                                                        updatedStart=update_range[0],
+                                                                        updatedEnd=update_range[1])
+
+        else:
+            result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
+
+        arxiv_results = pd.concat([arxiv_results, com.convert_robj(result)])
+
+    return arxiv_results, arxic_counts
