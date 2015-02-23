@@ -39,3 +39,9 @@ search_arxiv_submission_update_range <- function(subcat,limit = 10, batchsize = 
   
   return(arxiv_search(query, limit=limit, batchsize =batchsize))
 }
+
+get_cat_count <- function(subcat)
+{
+  cat = paste("cat:",subcat,sep="")
+  return(arxiv_count(cat))
+}
