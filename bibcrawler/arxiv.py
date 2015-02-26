@@ -21,7 +21,7 @@ __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 # with open("resources/arxiv_categories.pickle", 'rb') as f:
 # cats = pickle.load(f)
 
-#: All arxiv categories and their subcategotiers
+#: All arxiv categories and their subcategories
 ARXIV_CATS = {'astro-ph': {'name': 'Astrophysics',
                            'subcats': {'GA': 'Astrophysics of Galaxies',
                                        'CO': 'Cosmology and Nongalactic Astrophysics',
@@ -225,20 +225,27 @@ def r_arxiv_crawler(subcategories, limit=10, batchsize=100, submission_range=Non
     for subcategory in subcategories:
         
 
+
+    for subcategory in subcategories:
+        arxic_counts.append(arxiv_crawler.get_cat_count(subcategory))
+
         if submission_range and not update_range:
             result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
                                                                  submittedDateStart=submission_range[0],
                                                                  submittedDateEnd=submission_range[1])
+
         elif update_range and not submission_range:
             result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
                                                              updatedStart=update_range[0],
                                                              updatedEnd=update_range[1])
+
         elif submission_range and update_range:
             result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit, batchsize=batchsize,
                                                                         submittedDateStart=submission_range[0],
                                                                         submittedDateEnd=submission_range[1],
                                                                         updatedStart=update_range[0],
                                                                         updatedEnd=update_range[1])
+
         else:
             result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
 

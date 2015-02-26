@@ -12,10 +12,11 @@ data = r_arxiv_crawler(crawling_list, limit=20)
 
 pprint("------ STAGE 1 ------")
 pprint(data.describe())
+pprint(counts)
 
 extended_data = doi_lookup(data)
 
 pprint("------ STAGE 2 ------")
 pprint(extended_data.describe())
 
-pprint(extended_data[['crossref_doi', 'crossref_score']])
+pprint(extended_data[['crossref_doi', 'levenshtein_ratio']])

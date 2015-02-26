@@ -2,7 +2,7 @@
 
 A python framework to crawl various bibliometric sources.
 
-## Overview?
+## Overview
 
 1. **Source** - Inital data acquisition
 
@@ -29,6 +29,10 @@ A python framework to crawl various bibliometric sources.
 In order to run the arxiv-crawler both R and rpy2 will need to be installed and setup correctly.
 In case rpy2 fails to find the package "aRxiv", the following steps should help:
 
+* Download rpy2-binaries [here](http://www.lfd.uci.edu/~gohlke/pythonlibs/#rpy2). Make sure to choose the correct version.
+
+  In order to install the downloaded .whl file, do this: `pip install wheel` and then `pip install *.whl`
+  
 * Install the R-package "aRxiv" using install.packages("aRxiv") within a R-session
 * Determine the locations of your R-libraries with .libPath() and ...
 
