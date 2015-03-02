@@ -191,7 +191,7 @@ def get_subcat_fullname(subcat):
         return unicode(name + " - " + subname)
 
 
-def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
+def r_arxiv_crawler(crawling_list, batchsize=100, submission_range=None, update_range=None, delay=None):
     """
     This is a python wrapper for the aRxiv "arxiv_search" function.
 
@@ -199,8 +199,6 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
     :param crawling_list: The subcategories to crawl. NOT "stat" -> USE "stat.AP" etc...
     :type crawling_list: dict of lists.
-    :param limit: Max number of results.
-    :type limit: int.
     :param batchsize: Number of queries per request.
     :type batchsize: int.
     :param submission_range: The range of submission dates.
@@ -243,51 +241,78 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
             crawl_start = time.time()
             cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
 
-            arxiv_crawler.set_toomany(cat_count)
+            start_range = range(0, cat_count, batchsize)
 
-            if not limit:
-                limit = cat_count
-
-            try:
-                if submission_range and not update_range:
-                    result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
-                                                                         submittedDateStart=submission_range[0],
-                                                                         submittedDateEnd=submission_range[1])
-
-                elif update_range and not submission_range:
-                    result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
-                                                                     updatedStart=update_range[0],
-                                                                     updatedEnd=update_range[1])
-
-                elif submission_range and update_range:
-                    result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit,
+            subcat_df = pd.DataFrame()
+            max_count = cat_count // batchsize
+            for count, start in enumerate(start_range):
+                print("\t\tBatch {} out of {}".format(count, max_count))
+                try_count = 0
+                while True:
+                    try:
+                        if submission_range and not update_range:
+                            batch = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=batchsize,
                                                                                 batchsize=batchsize,
                                                                                 submittedDateStart=submission_range[0],
                                                                                 submittedDateEnd=submission_range[1],
-                                                                                updatedStart=update_range[0],
-                                                                                updatedEnd=update_range[1])
+                                                                                start=start)
 
-                else:
-                    result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
-            except:
-                crawl_end = time.time()
-                crawl_log.loc[len(crawl_log.index) + 1] = [unicode(subcategory),
-                                                           unicode(cat_count),
-                                                           "ERROR",
-                                                           unicode(crawl_end - crawl_start),
-                                                           get_subcat_fullname(subcategory)]
-            else:
-                crawl_end = time.time()
-                result = com.convert_robj(result)
-                result_length = len(result.index)
+                        elif update_range and not submission_range:
+                            batch = arxiv_crawler.search_arxiv_update_range(subcategory, limit=batchsize,
+                                                                            batchsize=batchsize,
+                                                                            updatedStart=update_range[0],
+                                                                            updatedEnd=update_range[1],
+                                                                            start=start)
 
-                crawl_log.loc[len(crawl_log.index) + 1] = [unicode(subcategory),
-                                                           unicode(cat_count),
-                                                           unicode(result_length),
-                                                           unicode(crawl_end - crawl_start),
-                                                           get_subcat_fullname(subcategory)]
+                        elif submission_range and update_range:
+                            batch = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=batchsize,
+                                                                                       batchsize=batchsize,
+                                                                                       submittedDateStart=
+                                                                                       submission_range[
+                                                                                           0],
+                                                                                       submittedDateEnd=
+                                                                                       submission_range[
+                                                                                           1],
+                                                                                       updatedStart=update_range[0],
+                                                                                       updatedEnd=update_range[1],
+                                                                                       start=start)
 
-                result_df = pd.concat([result_df, result])
+                        else:
+                            batch = arxiv_crawler.search_arxiv(subcategory, limit=batchsize, batchsize=batchsize,
+                                                               start=start)
+                    except Exception, e:
+                        try_count += 1
+                        print("\t\t\t SOME ERROR OCCURED... Retry {}".format(try_count))
+
+                        # TODO EXCEPTION HANDLING
+                        continue
+
+                    else:
+                        batch = com.convert_robj(batch)
+                        batch_length = len(batch.index)
+
+                        if batch_length != batchsize:
+                            if count != max_count:
+                                try_count += 1
+                                print("\t\t\t NOT ENOUGH DATA RECEIVED... Retry {}".format(try_count))
+
+                                # TODO EXCEPTION HANDLING
+                                continue
+
+                        subcat_df = pd.concat([subcat_df, batch])
+                        break
+
+            crawl_end = time.time()
+            result_length = len(subcat_df.index)
+            crawl_log.loc[len(crawl_log.index) + 1] = [unicode(subcategory),
+                                                       unicode(cat_count),
+                                                       unicode(result_length),
+                                                       unicode(crawl_end - crawl_start),
+                                                       get_subcat_fullname(subcategory)]
+
+            # TODO: Save temporary files to HDD. After crawling all of them concatenate to one file. Remove temp files
+
+            result_df = pd.concat([result_df, subcat_df])
 
     ts_finish = time.time()
 

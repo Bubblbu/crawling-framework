@@ -6,7 +6,8 @@ from doi_lookup import doi_lookup
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-crawling_list = get_arxiv_subcats(['astro-ph'])
+# crawling_list = get_arxiv_subcats(['astro-ph'])
+crawling_list = {"stat": ["stat.AP"]}
 
 r_arxiv_crawler(crawling_list, batchsize=400, delay=1)
 # doi_lookup()
