@@ -7,10 +7,15 @@ from pprint import pprint
 from Levenshtein import distance
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
-
-import pandas as pd
 import pandas.rpy.common as com
+import pandas as pd
+
+import os
+import time
+import datetime
 import re
+
+from config import base_directory
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
@@ -23,12 +28,12 @@ regex_mult_whitespace = r"\s{2,}"
 
 
 def crossref_lookup(authors, titles, submitted):
-    cr_lookup = None
-
+    # Load r-scripts
     with open('r_scripts/doi_lookup.R', 'r') as f:
         string = ''.join(f.readlines())
     doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
 
+    cr_lookup = None
     for author, title, date in zip(authors, titles, submitted):
         if cr_lookup is None:
             cr_lookup = com.convert_robj(doi_lookuper.crossref(author, title, date))
@@ -57,7 +62,7 @@ def crossref_lookup(authors, titles, submitted):
     return cr_dois, levenshtein_ratio
 
 
-def doi_lookup(arxiv_df, mode='all'):
+def doi_lookup(stage1_dir = None, mode='all'):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -65,26 +70,48 @@ def doi_lookup(arxiv_df, mode='all'):
 
     Possible candidate documents are matched with original arxiv-documents using Levenshtein Ratio (Schloegl et al)
 
-    :param arxiv_df: The arxiv dataframe that needs to be enriched with more DOIs
-    :type arxiv_df: pd.DataFrame
+    :param stage1_dir: The folder containing the stage 1 data. If not given, the most recent folder will be used to work
+    :type stage1_dir: str
+    :param mode: The DOI Registration Agencies to be crawled
+    :type mode: str
 
-    :returns: pd.DataFrame - newly found DOI's with original indices
+    :returns: pd.DataFrame - newly found DOIs with original indices
     """
+    ts_start = time.time()
+    timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
-    extended_df = arxiv_df.copy(deep=True)
+    # Create folder structure
+    if not stage1_dir:
+        all_subdirs = [base_directory+d for d in os.listdir(base_directory) if os.path.isdir(base_directory+d)]
+        latest_subdir = max(all_subdirs, key=os.path.getmtime)
+        stage1_dir = latest_subdir + "/"
+
+    working_folder = stage1_dir + timestamp
+    if not os.path.exists(working_folder):
+        os.makedirs(working_folder)
+    else:
+        print("The crawl <<" + working_folder + ">> already exists. Exiting...")
+        return None
+
+    # Read in stage 1 file
+    df = pd.io.json.read_json(stage1_dir+"stage_1.json")
+
+    # Crawl additional dois
     cr_dois = []
     levenshtein_ratio = []
 
     if mode == 'all':
-        cr_dois, levenshtein_ratio = crossref_lookup(arxiv_df.authors, arxiv_df.title, arxiv_df.submitted)
+        cr_dois, levenshtein_ratio = crossref_lookup(df.authors, df.title, df.submitted)
 
     elif mode == 'crossref':
-        cr_dois = crossref_lookup(arxiv_df.authors, arxiv_df.titles, arxiv_df.submitted)
+        cr_dois = crossref_lookup(df.authors, df.titles, df.submitted)
 
     elif mode == 'datacite':
         pass
 
-    extended_df['crossref_doi'] = pd.Series(cr_dois)
-    extended_df['levenshtein_ratio'] = pd.Series(levenshtein_ratio)
+    df['crossref_doi'] = pd.Series(cr_dois)
+    df['levenshtein_ratio'] = pd.Series(levenshtein_ratio)
 
-    return extended_df
+    df.to_json(working_folder + "/stage_2.json")
+
+    return 0

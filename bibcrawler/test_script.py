@@ -1,22 +1,17 @@
 from __future__ import print_function, division
 from pprint import pprint
 
-from arxiv import r_arxiv_crawler
+from arxiv import r_arxiv_crawler, get_arxiv_subcats
 from doi_lookup import doi_lookup
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-crawling_list = ["stat.AP", "astro-ph.GA"]
+crawling_list = get_arxiv_subcats(['astro-ph'])
 
-data = r_arxiv_crawler(crawling_list, limit=20)
+r_arxiv_crawler(crawling_list, batchsize=400, delay=1)
+# doi_lookup()
 
-pprint("------ STAGE 1 ------")
-pprint(data.describe())
-pprint(counts)
-
-extended_data = doi_lookup(data)
-
-pprint("------ STAGE 2 ------")
-pprint(extended_data.describe())
-
-pprint(extended_data[['crossref_doi', 'levenshtein_ratio']])
+# pprint("------ STAGE 2 ------")
+# pprint(extended_data.describe())
+#
+# pprint(extended_data[['crossref_doi', 'levenshtein_ratio']])

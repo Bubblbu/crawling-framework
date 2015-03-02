@@ -175,21 +175,30 @@ ARXIV_CATS = {'astro-ph': {'name': 'Astrophysics',
 
 
 def get_arxiv_subcats(cats):
-    subcategories = []
+    subcategories = {}
     for cat in cats:
-        subcategories.append([cat + "." + subcat for subcat in ARXIV_CATS[cat]['subcats'].keys()])
+        subcategories[cat] = [cat + "." + subcat for subcat in ARXIV_CATS[cat]['subcats'].keys()]
 
     return subcategories
 
 
-def r_arxiv_crawler(subcategories, limit=10, batchsize=100, submission_range=None, update_range=None):
+def get_subcat_fullname(subcat):
+    if "." in subcat:
+        parts = subcat.split(".")
+        name = ARXIV_CATS[parts[0]]['name']
+        subname = ARXIV_CATS[parts[0]]['subcats'][parts[1]]
+
+        return unicode(name + " - " + subname)
+
+
+def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
     """
     This is a python wrapper for the aRxiv "arxiv_search" function.
 
     If submission_range or update_range are given, the results are filtered according to the date ranges.
 
-    :param subcategories: The subcategories to crawl. NOT "stat" -> USE "stat.AP" etc...
-    :type subcategories: list of str.
+    :param crawling_list: The subcategories to crawl. NOT "stat" -> USE "stat.AP" etc...
+    :type crawling_list: dict of lists.
     :param limit: Max number of results.
     :type limit: int.
     :param batchsize: Number of queries per request.
@@ -219,41 +228,84 @@ def r_arxiv_crawler(subcategories, limit=10, batchsize=100, submission_range=Non
         string = ''.join(f.readlines())
     arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
 
+    # arxiv_delay
+    if delay:
+        arxiv_crawler.set_delay(delay)
+
     # Crawling
     result_df = pd.DataFrame()
+    crawl_log = pd.DataFrame(columns=["Cat.Abb", "Entries on arxiv.org", "Entries found", "Time", "Full Name"])
 
-    for subcategory in subcategories:
-        
+    for cat, subcats in crawling_list.iteritems():
+        print("Crawling " + cat + ":")
+        for subcategory in subcats:
+            print("\t" + subcategory)
+            crawl_start = time.time()
+            cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
 
+            arxiv_crawler.set_toomany(cat_count)
 
-    for subcategory in subcategories:
-        arxic_counts.append(arxiv_crawler.get_cat_count(subcategory))
+            if not limit:
+                limit = cat_count
 
-        if submission_range and not update_range:
-            result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
-                                                                 submittedDateStart=submission_range[0],
-                                                                 submittedDateEnd=submission_range[1])
+            try:
+                if submission_range and not update_range:
+                    result = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit, batchsize=batchsize,
+                                                                         submittedDateStart=submission_range[0],
+                                                                         submittedDateEnd=submission_range[1])
 
-        elif update_range and not submission_range:
-            result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
-                                                             updatedStart=update_range[0],
-                                                             updatedEnd=update_range[1])
+                elif update_range and not submission_range:
+                    result = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit, batchsize=batchsize,
+                                                                     updatedStart=update_range[0],
+                                                                     updatedEnd=update_range[1])
 
-        elif submission_range and update_range:
-            result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit, batchsize=batchsize,
-                                                                        submittedDateStart=submission_range[0],
-                                                                        submittedDateEnd=submission_range[1],
-                                                                        updatedStart=update_range[0],
-                                                                        updatedEnd=update_range[1])
+                elif submission_range and update_range:
+                    result = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit,
+                                                                                batchsize=batchsize,
+                                                                                submittedDateStart=submission_range[0],
+                                                                                submittedDateEnd=submission_range[1],
+                                                                                updatedStart=update_range[0],
+                                                                                updatedEnd=update_range[1])
 
-        else:
-            result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
+                else:
+                    result = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize)
+            except:
+                crawl_end = time.time()
+                crawl_log.loc[len(crawl_log.index) + 1] = [unicode(subcategory),
+                                                           unicode(cat_count),
+                                                           "ERROR",
+                                                           unicode(crawl_end - crawl_start),
+                                                           get_subcat_fullname(subcategory)]
+            else:
+                crawl_end = time.time()
+                result = com.convert_robj(result)
+                result_length = len(result.index)
 
-        result_df = pd.concat([result_df, com.convert_robj(result)])
+                crawl_log.loc[len(crawl_log.index) + 1] = [unicode(subcategory),
+                                                           unicode(cat_count),
+                                                           unicode(result_length),
+                                                           unicode(crawl_end - crawl_start),
+                                                           get_subcat_fullname(subcategory)]
+
+                result_df = pd.concat([result_df, result])
 
     ts_finish = time.time()
 
     result_df.index = range(0, len(result_df.index))
-    result_df.to_json(working_folder + "/data.json")
+    result_df.to_json(working_folder + "/stage_1.json")
+    crawl_log.to_csv(working_folder + "/crawl_log.csv", sep=";")
+
+    write_log(working_folder, ts_start, ts_finish)
 
     return result_df
+
+
+def write_log(directory, start_time, end_time):
+    with open(directory + "/log.txt", "wb") as file:
+        file.write("--- LOG --- " + datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S') + "\n\n")
+
+        file.write("Total crawl time: " + unicode(end_time - start_time) + "s\n")
+
+        file.write("Have a look at log.csv for more details on the crawl.\n\n")
+
+        file.write("TO-DO: Notes and other logging stuff")

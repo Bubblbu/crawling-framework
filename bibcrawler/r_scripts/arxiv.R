@@ -45,3 +45,11 @@ get_cat_count <- function(subcat)
   cat = paste("cat:",subcat,sep="")
   return(arxiv_count(cat))
 }
+
+set_delay <- function(delay){
+  options(aRxiv_delay=delay)
+}
+
+set_toomany <- function(toomany){
+  options(aRxiv_toomany=toomany)
+}
