@@ -14,6 +14,8 @@ import os
 import time
 import datetime
 import re
+import threading
+import Queue
 
 from config import base_directory
 
@@ -27,42 +29,91 @@ regex_alphanum = r"[^a-zA-Z0-9]"
 regex_mult_whitespace = r"\s{2,}"
 
 
-def crossref_lookup(authors, titles, submitted):
+class CrossrefThread(threading.Thread):
+    def __init__(self, queue, output_queue, doi_lookuper):
+        threading.Thread.__init__(self)
+        self.event = threading.Event()
+        self.q = queue
+        self.output_queue = output_queue
+        self.doi_lookuper = doi_lookuper
+
+    def run(self):
+        while True:
+            try:
+                idx, author, title, date = self.q.get(timeout=1)
+                print(idx)
+                temp = com.convert_robj(self.doi_lookuper.crossref(author, title, date))
+                temp['order'] = idx
+                temp['orig_title'] = title
+                self.output_queue.put(temp)
+            except Queue.Empty:
+                if self.event.is_set():
+                    break
+
+
+def crossref_lookup(index, authors, titles, submitted, num_threads=1):
     # Load r-scripts
     with open('r_scripts/doi_lookup.R', 'r') as f:
         string = ''.join(f.readlines())
     doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
 
-    cr_lookup = None
-    for author, title, date in zip(authors, titles, submitted):
-        if cr_lookup is None:
-            cr_lookup = com.convert_robj(doi_lookuper.crossref(author, title, date))
-        else:
-            cr_lookup = pd.concat([cr_lookup, com.convert_robj(doi_lookuper.crossref(author, title, date))])
+    input_queue = Queue.Queue()
+    output_queue = Queue.Queue()
+
+    cr_lookup = pd.DataFrame()
+    for idx, author, title, date in zip(index, authors, titles, submitted):
+        input_queue.put((idx, author, title, date))
+
+    crossref_threads = []
+
+    for i in range(num_threads):
+        thread = CrossrefThread(input_queue, output_queue, doi_lookuper)
+        thread.start()
+        crossref_threads.append(thread)
+
+    for thread in crossref_threads:
+        thread.event.set()
+
+    for thread in crossref_threads:
+        thread.join()
+
+    while True:
+        try:
+            df = output_queue.get_nowait()
+            cr_lookup = pd.concat([cr_lookup, df])
+        except Queue.Empty:
+            break
+
+    cr_lookup = cr_lookup.sort(columns=['order'], ascending=True)
+    cr_lookup.index = range(0, len(cr_lookup.index))
 
     cr_dois = []
     levenshtein_ratio = []
-    for original, found, doi in zip(titles, cr_lookup.title, cr_lookup.DOI):
-        original = re.sub(regex_alphanum, " ", original).strip()
-        original = re.sub(regex_mult_whitespace, " ", original).lower()
+    cr_titles = []
 
-        found = re.sub(regex_alphanum, " ", found).strip()
-        found = re.sub(regex_mult_whitespace, " ", found).lower()
+    for original, found, doi in zip(cr_lookup.orig_title, cr_lookup.title, cr_lookup.DOI):
+        original_edited = re.sub(regex_alphanum, " ", original).strip()
+        original_edited = re.sub(regex_mult_whitespace, " ", original_edited).lower()
 
-        ld = distance(unicode(original), unicode(found))
-        max_len = max(len(original), len(found))
+        found_edited = re.sub(regex_alphanum, " ", found).strip()
+        found_edited = re.sub(regex_mult_whitespace, " ", found_edited).lower()
+
+        ld = distance(unicode(original_edited), unicode(found_edited))
+        max_len = max(len(original_edited), len(found_edited))
 
         if ld / max_len <= LR:
             cr_dois.append(doi)
+            cr_titles.append(found)
         else:
             cr_dois.append(None)
+            cr_titles.append(None)
 
         levenshtein_ratio.append(ld / max_len)
 
-    return cr_dois, levenshtein_ratio
+    return cr_dois, levenshtein_ratio, cr_titles
 
 
-def doi_lookup(stage1_dir = None, mode='all'):
+def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -82,9 +133,13 @@ def doi_lookup(stage1_dir = None, mode='all'):
 
     # Create folder structure
     if not stage1_dir:
-        all_subdirs = [base_directory+d for d in os.listdir(base_directory) if os.path.isdir(base_directory+d)]
+        all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
         stage1_dir = latest_subdir + "/"
+    else:
+        stage1_dir = base_directory + stage1_dir
+        if stage1_dir[-1] != "/":
+            stage1_dir += "/"
 
     working_folder = stage1_dir + timestamp
     if not os.path.exists(working_folder):
@@ -94,23 +149,30 @@ def doi_lookup(stage1_dir = None, mode='all'):
         return None
 
     # Read in stage 1 file
-    df = pd.io.json.read_json(stage1_dir+"stage_1.json")
+    df = pd.io.json.read_json(stage1_dir + "stage_1.json")
+    df.index = range(0, len(df.index))
 
     # Crawl additional dois
     cr_dois = []
     levenshtein_ratio = []
+    cr_titles = []
 
     if mode == 'all':
-        cr_dois, levenshtein_ratio = crossref_lookup(df.authors, df.title, df.submitted)
+        cr_dois, levenshtein_ratio, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
+                                                                num_threads=num_workers)
 
     elif mode == 'crossref':
-        cr_dois = crossref_lookup(df.authors, df.titles, df.submitted)
+        cr_dois, levenshtein_ratio, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
+                                                                num_threads=num_workers)
 
     elif mode == 'datacite':
         pass
 
     df['crossref_doi'] = pd.Series(cr_dois)
     df['levenshtein_ratio'] = pd.Series(levenshtein_ratio)
+    df['crossref_title'] = pd.Series(cr_titles)
+
+    df.sort_index(inplace=True)
 
     df.to_json(working_folder + "/stage_2.json")
 

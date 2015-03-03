@@ -7,10 +7,10 @@ from doi_lookup import doi_lookup
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
 # crawling_list = get_arxiv_subcats(['astro-ph'])
-crawling_list = {"stat": ["stat.AP"]}
+crawling_list = {"cd": ["cs.AR"]}
 
-r_arxiv_crawler(crawling_list, batchsize=400, delay=1)
-# doi_lookup()
+# r_arxiv_crawler(crawling_list, batchsize=10, delay=1)
+doi_lookup(stage1_dir="2015-03-02_18-43-47", num_workers=10)
 
 # pprint("------ STAGE 2 ------")
 # pprint(extended_data.describe())
