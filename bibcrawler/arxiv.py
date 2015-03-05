@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, division
-from pprint import pprint
 
 import os
 import time
 import datetime
-
+import numpy as np
 import pandas as pd
+
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import pandas.rpy.common as com
 
@@ -191,7 +191,7 @@ def get_subcat_fullname(subcat):
         return unicode(name + " - " + subname)
 
 
-def r_arxiv_crawler(crawling_list, limit = None, batchsize=100, submission_range=None, update_range=None, delay=None):
+def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
     """
     This is a python wrapper for the aRxiv "arxiv_search" function.
 
@@ -217,13 +217,12 @@ def r_arxiv_crawler(crawling_list, limit = None, batchsize=100, submission_range
 
     # Create folder structure
     working_folder = base_directory + timestamp
-    if not os.path.exists(working_folder):
-        os.makedirs(working_folder)
-    else:
-        print("The crawl <<" + working_folder + ">> already exists. Exiting...")
-        return None
+    os.makedirs(working_folder)
+
+    print("Created new folder: <<" + working_folder + ">>")
 
     # Load R-scripts
+    print("Loading R-Scripts ...")
     with open('r_scripts/arxiv.R', 'r') as f:
         string = ''.join(f.readlines())
     arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
@@ -233,9 +232,9 @@ def r_arxiv_crawler(crawling_list, limit = None, batchsize=100, submission_range
         arxiv_crawler.set_delay(delay)
 
     # Crawling
-    result_df = pd.DataFrame()
     crawl_log = pd.DataFrame(columns=["Cat.Abb", "Entries on arxiv.org", "Entries found", "Time", "Full Name"])
 
+    temp_count = 0
     for cat, subcats in crawling_list.iteritems():
         print("Crawling " + cat + ":")
         for subcategory in subcats:
@@ -250,7 +249,6 @@ def r_arxiv_crawler(crawling_list, limit = None, batchsize=100, submission_range
 
             if limit < batchsize:
                 batchsize = limit
-
 
             subcat_df = pd.DataFrame()
             max_count = cat_count // batchsize
@@ -311,7 +309,7 @@ def r_arxiv_crawler(crawling_list, limit = None, batchsize=100, submission_range
                         subcat_df = pd.concat([subcat_df, batch])
                         break
 
-                # break
+                        # break
 
             crawl_end = time.time()
             result_length = len(subcat_df.index)
@@ -321,27 +319,49 @@ def r_arxiv_crawler(crawling_list, limit = None, batchsize=100, submission_range
                                                        unicode(crawl_end - crawl_start),
                                                        get_subcat_fullname(subcategory)]
 
-        # TODO: Save temporary files to HDD. After crawling all of them concatenate to one file. Remove temp files
-        print(subcat_df.describe())
-        result_df = pd.concat([result_df, subcat_df])
+            # TODO: Save temporary files to HDD. After crawling all of them concatenate to one file. Remove temp files
+            # result_df = pd.concat([result_df, subcat_df])
+
+            subcat_df = subcat_df.replace("", np.nan, regex=True)
+            subcat_df.index = range(0, len(subcat_df.index))
+            subcat_df.to_json(working_folder + "/temp_{}.json".format(temp_count))
+            temp_count += 1
 
     ts_finish = time.time()
 
-    result_df.index = range(0, len(result_df.index))
-    result_df.to_json(working_folder + "/stage_1.json")
-    crawl_log.to_csv(working_folder + "/crawl_log.csv", sep=";")
+    # Create log files
 
+    crawl_log.to_csv(working_folder + "/crawl_log.csv", sep=";")
     write_log(working_folder, ts_start, ts_finish)
 
-    return result_df
+    # # Combine all the temporary files - NOT WORKING. Memory errors
+    # result_df = pd.DataFrame()
+    # temp_dfs = []
+    # try:
+    #     for i in range(0, temp_count):
+    #         print(working_folder + "/temp_{}.json".format(i))
+    #         # temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_{}.json".format(i)))
+    #         result_df = pd.concat([result_df, pd.io.json.read_json(working_folder + "/temp_{}.json".format(i))])
+    #     result_df = pd.concat(temp_dfs)
+    #
+    #     result_df.index = range(0, len(result_df.index))
+    #     result_df.to_json(working_folder + "/stage_1.json")
+    # except Exception, e:
+    #     print(str(e))
+
+    # # Remove temp files
+    # for i in range(0, temp_count):
+    #     os.remove(working_folder + "/temp_{}.json".format(i))
+
+    return
 
 
 def write_log(directory, start_time, end_time):
-    with open(directory + "/log.txt", "wb") as file:
-        file.write("--- LOG --- " + datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S') + "\n\n")
+    with open(directory + "/log.txt", "wb") as outfile:
+        outfile.write("--- LOG --- " + datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S') + "\n\n")
 
-        file.write("Total crawl time: " + unicode(end_time - start_time) + "s\n")
+        outfile.write("Total crawl time: " + unicode(end_time - start_time) + "s\n")
 
-        file.write("Have a look at log.csv for more details on the crawl.\n\n")
+        outfile.write("Have a look at log.csv for more details on the crawl.\n\n")
 
-        file.write("TO-DO: Notes and other logging stuff")
+        outfile.write("TO-DO: Notes and other logging stuff")

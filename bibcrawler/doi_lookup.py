@@ -2,31 +2,22 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, division
-from pprint import pprint
-
-from Levenshtein import distance
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import pandas.rpy.common as com
 import pandas as pd
+import numpy as np
 
 import os
 import time
 import datetime
-import re
 import threading
 import Queue
 
 from config import base_directory
+from utils import levenshtein_ratio, LR
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
-
-#: Levenshtein Ratio - Schloegl et al, 2014
-LR = 1 / 15.83
-
-# Regex for 'only alpha-numeric'
-regex_alphanum = r"[^a-zA-Z0-9]"
-regex_mult_whitespace = r"\s{2,}"
 
 
 class CrossrefThread(threading.Thread):
@@ -37,22 +28,31 @@ class CrossrefThread(threading.Thread):
         self.output_queue = output_queue
         self.doi_lookuper = doi_lookuper
 
+        self.idx = None
+        self.author = None
+        self.title = None
+        self.date = None
+
     def run(self):
         while True:
             try:
-                idx, author, title, date = self.q.get(timeout=1)
-                print(idx)
-                temp = com.convert_robj(self.doi_lookuper.crossref(author, title, date))
-                temp['order'] = idx
-                temp['orig_title'] = title
+                self.idx, self.author, self.title, self.date = self.q.get(timeout=1)
+                print(self.idx)
+
+                temp = com.convert_robj(self.doi_lookuper.crossref(self.author, self.title, self.date))
+                temp['order'] = self.idx
+                temp['orig_title'] = self.title
                 self.output_queue.put(temp)
             except Queue.Empty:
                 if self.event.is_set():
                     break
+            except Exception, e:
+                print(str(e))
 
 
 def crossref_lookup(index, authors, titles, submitted, num_threads=1):
     # Load r-scripts
+    print("\nLoading R-Scripts ...")
     with open('r_scripts/doi_lookup.R', 'r') as f:
         string = ''.join(f.readlines())
     doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
@@ -62,10 +62,14 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
 
     cr_lookup = pd.DataFrame()
     for idx, author, title, date in zip(index, authors, titles, submitted):
+        tokens = author.split("|")
+        if len(tokens) >= 15:
+            author = "|".join(tokens[:15])
         input_queue.put((idx, author, title, date))
 
     crossref_threads = []
 
+    print("\nStarting crossref crawl process...")
     for i in range(num_threads):
         thread = CrossrefThread(input_queue, output_queue, doi_lookuper)
         thread.start()
@@ -88,29 +92,24 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
     cr_lookup.index = range(0, len(cr_lookup.index))
 
     cr_dois = []
-    levenshtein_ratio = []
+    lr_results = []
     cr_titles = []
 
-    for original, found, doi in zip(cr_lookup.orig_title, cr_lookup.title, cr_lookup.DOI):
-        original_edited = re.sub(regex_alphanum, " ", original).strip()
-        original_edited = re.sub(regex_mult_whitespace, " ", original_edited).lower()
+    print("\nChecking titles with LR")
+    for idx, (original, found, doi) in enumerate(zip(cr_lookup.orig_title, cr_lookup.title, cr_lookup.DOI)):
+        print(idx)
+        lr = levenshtein_ratio(original, found)
 
-        found_edited = re.sub(regex_alphanum, " ", found).strip()
-        found_edited = re.sub(regex_mult_whitespace, " ", found_edited).lower()
-
-        ld = distance(unicode(original_edited), unicode(found_edited))
-        max_len = max(len(original_edited), len(found_edited))
-
-        if ld / max_len <= LR:
+        if lr <= LR:
             cr_dois.append(doi)
             cr_titles.append(found)
         else:
-            cr_dois.append(None)
-            cr_titles.append(None)
+            cr_dois.append(np.nan)
+            cr_titles.append(np.nan)
 
-        levenshtein_ratio.append(ld / max_len)
+        lr_results.append(lr)
 
-    return cr_dois, levenshtein_ratio, cr_titles
+    return cr_dois, lr_results, cr_titles
 
 
 def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
@@ -136,40 +135,41 @@ def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
         all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
         stage1_dir = latest_subdir + "/"
+        print("\nStage-1 directory was not given. Latest directory has been chosen:\n<<" + stage1_dir + ">>")
     else:
         stage1_dir = base_directory + stage1_dir
         if stage1_dir[-1] != "/":
             stage1_dir += "/"
+        print("\nStage-1 directory was chosen:\n\n<<" + stage1_dir + ">>")
 
     working_folder = stage1_dir + timestamp
-    if not os.path.exists(working_folder):
-        os.makedirs(working_folder)
-    else:
-        print("The crawl <<" + working_folder + ">> already exists. Exiting...")
-        return None
+    os.makedirs(working_folder)
+
+    print("\nCreated new folder: <<" + working_folder + ">>")
 
     # Read in stage 1 file
+    print("\nReading in stage_1.json ... (Might take a few seconds)")
     df = pd.io.json.read_json(stage1_dir + "stage_1.json")
     df.index = range(0, len(df.index))
 
     # Crawl additional dois
     cr_dois = []
-    levenshtein_ratio = []
+    lr_results = []
     cr_titles = []
 
     if mode == 'all':
-        cr_dois, levenshtein_ratio, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
-                                                                num_threads=num_workers)
+        cr_dois, lr_results, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
+                                                         num_threads=num_workers)
 
     elif mode == 'crossref':
-        cr_dois, levenshtein_ratio, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
-                                                                num_threads=num_workers)
+        cr_dois, lr_results, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
+                                                         num_threads=num_workers)
 
     elif mode == 'datacite':
         pass
 
     df['crossref_doi'] = pd.Series(cr_dois)
-    df['levenshtein_ratio'] = pd.Series(levenshtein_ratio)
+    df['levenshtein_ratio'] = pd.Series(lr_results)
     df['crossref_title'] = pd.Series(cr_titles)
 
     df.sort_index(inplace=True)
