@@ -1,18 +1,19 @@
 from __future__ import print_function, division
-from pprint import pprint
 
 from arxiv import r_arxiv_crawler, get_arxiv_subcats
 from doi_lookup import doi_lookup
+from altmetrics import mendeley_altmetrics
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-# crawling_list = get_arxiv_subcats(['astro-ph'])
-crawling_list = {"cd": ["cs.AR"]}
+crawling_list = get_arxiv_subcats(['astro-ph'])
+# crawling_list = {"cd": ["cs.AR", "stat.AP", "cs.AI"]}
 
-# r_arxiv_crawler(crawling_list, batchsize=10, delay=1)
-doi_lookup(stage1_dir="2015-03-02_18-43-47", num_workers=10)
+#  === STAGE 1 ===
+# r_arxiv_crawler(crawling_list, batchsize=400, delay=1)
 
-# pprint("------ STAGE 2 ------")
-# pprint(extended_data.describe())
-#
-# pprint(extended_data[['crossref_doi', 'levenshtein_ratio']])
+#  === STAGE 2 ===
+doi_lookup(stage1_dir="cs_stat_6mb", num_workers=20)
+
+#  === STAGE 3 ===
+mendeley_altmetrics(stage1_dir="cs_stat_6mb")
