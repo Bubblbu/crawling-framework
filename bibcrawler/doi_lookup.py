@@ -4,11 +4,13 @@
 from __future__ import print_function, division
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
+import rpy2.robjects as R
 import pandas.rpy.common as com
 import pandas as pd
 import numpy as np
 
 import os
+import gc
 import time
 import datetime
 import threading
@@ -19,6 +21,47 @@ from utils import levenshtein_ratio, LR
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
+# from guppy import hpy
+
+working_folder = None
+
+#
+# class HeapyThread(threading.Thread):
+# def __init__(self):
+# threading.Thread.__init__(self)
+# self.h = hpy()
+# self.before = None
+# self.after = None
+#
+# def run(self):
+#         while True:
+#             time.sleep(2)
+#             if not self.before:
+#                 self.before = self.h.heap()
+#             else:
+#                 self.after = self.h.heap()
+#                 print(self.after - self.before)
+#                 self.before = self.after
+
+
+class PrintThread(threading.Thread):
+    def __init__(self, queue):
+        threading.Thread.__init__(self)
+        self.event = threading.Event()
+        self.queue = queue
+
+    def run(self):
+        print("running")
+        while True:
+            try:
+                result = self.queue.get_nowait()
+                with open(working_folder + "/dois.csv", "a") as f:
+                    f.write("{}\t{}\t{}\t{}\n".format(result[0], result[1].encode('utf-8'), result[2].encode('utf-8'),
+                                                      result[3].encode('utf-8')))
+                self.queue.task_done()
+            except Queue.Empty:
+                if self.event.is_set():
+                    break
 
 class CrossrefThread(threading.Thread):
     def __init__(self, queue, output_queue, doi_lookuper):
@@ -36,18 +79,28 @@ class CrossrefThread(threading.Thread):
     def run(self):
         while True:
             try:
-                self.idx, self.author, self.title, self.date = self.q.get(timeout=1)
+                self.idx, self.author, self.title, self.date = self.q.get_nowait()
                 print(self.idx)
 
                 temp = com.convert_robj(self.doi_lookuper.crossref(self.author, self.title, self.date))
-                temp['order'] = self.idx
-                temp['orig_title'] = self.title
-                self.output_queue.put(temp)
+                # temp['order'] = self.idx
+                # temp['orig_title'] = self.title
+                title = temp['title'][1]
+                if 'DOI' in temp:
+                    doi = temp['DOI'][1]
+                else:
+                    doi = "nan"
+
+                self.output_queue.put((self.idx, title, self.title, doi))
+
+                # Garbage collection
+                R.r('gc()')
+                gc.collect()
+
+                self.q.task_done()
             except Queue.Empty:
                 if self.event.is_set():
                     break
-            except Exception, e:
-                print(str(e))
 
 
 def crossref_lookup(index, authors, titles, submitted, num_threads=1):
@@ -69,11 +122,21 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
 
     crossref_threads = []
 
+    # heapy = HeapyThread()
+    # heapy.start()
+
+    with open(working_folder + "/dois.csv", "wb") as f:
+        f.write("order\ttitle\torig_title\tDOI\n")
+
+    print_thread = PrintThread(output_queue)
+
     print("\nStarting crossref crawl process...")
     for i in range(num_threads):
         thread = CrossrefThread(input_queue, output_queue, doi_lookuper)
         thread.start()
         crossref_threads.append(thread)
+
+    print_thread.start()
 
     for thread in crossref_threads:
         thread.event.set()
@@ -81,12 +144,17 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
     for thread in crossref_threads:
         thread.join()
 
-    while True:
-        try:
-            df = output_queue.get_nowait()
-            cr_lookup = pd.concat([cr_lookup, df])
-        except Queue.Empty:
-            break
+    print_thread.event.set()
+    print_thread.join()
+
+    cr_lookup = pd.read_csv(working_folder + "/dois.csv", sep="\t")
+
+    # while True:
+    # try:
+    # df = output_queue.get_nowait()
+    #         cr_lookup = pd.concat([cr_lookup, df])
+    #     except Queue.Empty:
+    #         break
 
     cr_lookup = cr_lookup.sort(columns=['order'], ascending=True)
     cr_lookup.index = range(0, len(cr_lookup.index))
@@ -142,9 +210,9 @@ def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
             stage1_dir += "/"
         print("\nStage-1 directory was chosen:\n\n<<" + stage1_dir + ">>")
 
+    global working_folder
     working_folder = stage1_dir + timestamp
     os.makedirs(working_folder)
-
     print("\nCreated new folder: <<" + working_folder + ">>")
 
     # Read in stage 1 file
