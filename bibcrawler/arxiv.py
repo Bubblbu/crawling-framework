@@ -4,22 +4,21 @@
 from __future__ import print_function, division
 
 import os
+import gc
 import time
 import datetime
 import numpy as np
 import pandas as pd
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
+import rpy2.robjects as R
 import pandas.rpy.common as com
 
 from config import base_directory
+from utils import get_subcat_fullname
 
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
-
-# """ arXiv categories + subcategories - read in from textfile """
-# with open("resources/arxiv_categories.pickle", 'rb') as f:
-# cats = pickle.load(f)
 
 
 def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
@@ -138,9 +137,8 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
                                 continue
 
                         subcat_df = pd.concat([subcat_df, batch])
-                        break
 
-                        # break
+                        break
 
             crawl_end = time.time()
             result_length = len(subcat_df.index)
@@ -156,6 +154,11 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
             subcat_df = subcat_df.replace("", np.nan, regex=True)
             subcat_df.index = range(0, len(subcat_df.index))
             subcat_df.to_json(working_folder + "/temp_{}.json".format(temp_count))
+
+            # Force garbage collection in python and R
+            R.r('gc()')
+            gc.collect()
+
             temp_count += 1
 
     ts_finish = time.time()
