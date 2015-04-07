@@ -168,20 +168,20 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     crawl_log.to_csv(working_folder + "/crawl_log.csv", sep=";")
     write_log(working_folder, ts_start, ts_finish)
 
-    # # Combine all the temporary files - NOT WORKING. Memory errors
+    # Combine all the temporary files - NOT WORKING. Memory errors
     # result_df = pd.DataFrame()
-    # temp_dfs = []
-    # try:
-    #     for i in range(0, temp_count):
-    #         print(working_folder + "/temp_{}.json".format(i))
-    #         # temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_{}.json".format(i)))
-    #         result_df = pd.concat([result_df, pd.io.json.read_json(working_folder + "/temp_{}.json".format(i))])
-    #     result_df = pd.concat(temp_dfs)
-    #
-    #     result_df.index = range(0, len(result_df.index))
-    #     result_df.to_json(working_folder + "/stage_1.json")
-    # except Exception, e:
-    #     print(str(e))
+    temp_dfs = []
+    try:
+        for i in range(0, temp_count):
+            print(working_folder + "/temp_{}.json".format(i))
+            temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_{}.json".format(i)))
+            # result_df = pd.concat([result_df, pd.io.json.read_json(working_folder + "/temp_{}.json".format(i))])
+        result_df = pd.concat(temp_dfs)
+
+        result_df.index = range(0, len(result_df.index))
+        result_df.to_json(working_folder + "/stage_1.json")
+    except Exception, e:
+        print(str(e)) 
 
     # # Remove temp files
     # for i in range(0, temp_count):
