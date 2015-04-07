@@ -25,24 +25,6 @@ __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
 working_folder = None
 
-#
-# class HeapyThread(threading.Thread):
-# def __init__(self):
-# threading.Thread.__init__(self)
-# self.h = hpy()
-# self.before = None
-# self.after = None
-#
-# def run(self):
-#         while True:
-#             time.sleep(2)
-#             if not self.before:
-#                 self.before = self.h.heap()
-#             else:
-#                 self.after = self.h.heap()
-#                 print(self.after - self.before)
-#                 self.before = self.after
-
 
 class PrintThread(threading.Thread):
     def __init__(self, queue):
