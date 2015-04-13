@@ -9,6 +9,9 @@ import time
 import datetime
 import numpy as np
 import pandas as pd
+import logging
+import logging.config
+from logging_dict import logging_confdict
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
@@ -16,7 +19,6 @@ import pandas.rpy.common as com
 
 from config import base_directory
 from utils import get_subcat_fullname
-
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
@@ -49,13 +51,22 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     working_folder = base_directory + timestamp
     os.makedirs(working_folder)
 
-    print("Created new folder: <<" + working_folder + ">>")
+    # Setup logging
+    config = logging_confdict(working_folder, __name__)
+    logging.config.dictConfig(config)
+    arxiv_logger = logging.getLogger(__name__)
+
+    arxiv_logger.info("Starting new crawl for {}".format(str(crawling_list)))
+    arxiv_logger.info("Created new folder: <<" + working_folder + ">>")
 
     # Load R-scripts
-    print("Loading R-Scripts ...")
-    with open('r_scripts/arxiv.R', 'r') as f:
-        string = ''.join(f.readlines())
-    arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
+    arxiv_logger.debug("Loading R-Scripts ...")
+    try:
+        with open('r_scripts/arxiv.R', 'r') as f:
+            string = ''.join(f.readlines())
+        arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
+    except Exception, e:
+        arxiv_logger.exception("Error while loading R-Scripts.")
 
     # arxiv_delay
     if delay:
@@ -66,9 +77,9 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
     temp_count = 0
     for cat, subcats in crawling_list.iteritems():
-        print("Crawling " + cat + ":")
+        arxiv_logger.info("Crawling " + cat)
         for subcategory in subcats:
-            print("\t" + subcategory)
+            arxiv_logger.debug(subcategory)
             crawl_start = time.time()
             cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
 
@@ -83,7 +94,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
             subcat_df = pd.DataFrame()
             max_count = cat_count // batchsize
             for count, start in enumerate(start_range):
-                print("\t\tBatch {} out of {}".format(count, max_count))
+                arxiv_logger.info("{}: Batch {} out of {} - start:{}|bs:{}".format(subcategory, count, len(start_range)-1,
                 try_count = 0
                 while True:
                     try:
@@ -131,13 +142,11 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
                         if batch_length != batchsize:
                             if count != max_count:
                                 try_count += 1
-                                print("\t\t\t NOT ENOUGH DATA RECEIVED... Retry {}".format(try_count))
-
-                                # TODO EXCEPTION HANDLING
+                                arxiv_logger.error(
+                                    "{}: Missing data from arxiv.com - Retry {}".format(subcategory, try_count))
                                 continue
 
                         subcat_df = pd.concat([subcat_df, batch])
-
                         break
 
             crawl_end = time.time()
@@ -168,20 +177,20 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     crawl_log.to_csv(working_folder + "/crawl_log.csv", sep=";")
     write_log(working_folder, ts_start, ts_finish)
 
-    # Combine all the temporary files - NOT WORKING. Memory errors
-    # result_df = pd.DataFrame()
+    arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
+
+    # Merge all temporary files
     temp_dfs = []
     try:
         for i in range(0, temp_count):
-            print(working_folder + "/temp_{}.json".format(i))
+            arxiv_logger.debug(working_folder + "/temp_{}.json".format(i))
             temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_{}.json".format(i)))
-            # result_df = pd.concat([result_df, pd.io.json.read_json(working_folder + "/temp_{}.json".format(i))])
         result_df = pd.concat(temp_dfs)
 
         result_df.index = range(0, len(result_df.index))
         result_df.to_json(working_folder + "/stage_1.json")
     except Exception, e:
-        print(str(e)) 
+        arxiv_logger.exception("Error during concatenation of temporary objects")
 
     # # Remove temp files
     # for i in range(0, temp_count):
