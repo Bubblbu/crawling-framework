@@ -74,8 +74,8 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     if delay:
         arxiv_crawler.set_delay(delay)
 
-    # Crawling
-    crawl_log = pd.DataFrame(columns=["Cat.Abb", "Entries on arxiv.org", "Entries found", "Time", "Full Name"])
+    # Create crawling summary for each sub-cat
+    crawling_summary = pd.DataFrame(columns=["Cat.Abb", "Entries on arxiv.org", "Entries found", "Time", "Full Name"])
 
     temp_count = 0
     init_batchsize = batchsize
@@ -181,18 +181,17 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
             crawl_end = time.time()
             result_length = len(subcat_df.index)
-            crawl_log.loc[len(crawl_log.index) + 1] = [unicode(subcategory),
-                                                       unicode(cat_count),
-                                                       unicode(result_length),
-                                                       unicode(crawl_end - crawl_start),
-                                                       get_subcat_fullname(subcategory)]
-
-            # TODO: Save temporary files to HDD. After crawling all of them concatenate to one file. Remove temp files
-            # result_df = pd.concat([result_df, subcat_df])
+            crawling_summary.loc[len(crawling_summary.index) + 1] = [unicode(subcategory),
+                                                                     unicode(cat_count),
+                                                                     unicode(result_length),
+                                                                     unicode(crawl_end - crawl_start),
+                                                                     get_subcat_fullname(subcategory)]
 
             subcat_df = subcat_df.replace("", np.nan, regex=True)
             subcat_df.index = range(0, len(subcat_df.index))
-            subcat_df.to_json(working_folder + "/temp_{}.json".format(temp_count))
+            subcat_df["crawl_cat"] = pd.Series([subcategory] * len(subcat_df.index))
+
+            subcat_df.to_json(working_folder + "/temp_files/temp_{}.json".format(temp_count))
 
             # Force garbage collection in python and R
             R.r('gc()')
@@ -212,18 +211,21 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     temp_dfs = []
     try:
         for i in range(0, temp_count):
-            arxiv_logger.debug(working_folder + "/temp_{}.json".format(i))
-            temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_{}.json".format(i)))
+            arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
+            temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
         result_df = pd.concat(temp_dfs)
 
         result_df.index = range(0, len(result_df.index))
-        result_df.to_json(working_folder + "/stage_1.json")
+        result_df = result_df.fillna(np.nan)
+
+        result_df.to_json(working_folder + "/stage_1_raw.json")
     except Exception, e:
         arxiv_logger.exception("Error during concatenation of temporary objects")
 
+    # TODO decide if removal of temporary files is needed/useful
     # # Remove temp files
     # for i in range(0, temp_count):
-    #     os.remove(working_folder + "/temp_{}.json".format(i))
+    # os.remove(working_folder + "/temp_{}.json".format(i))
 
     return base_folder
 
