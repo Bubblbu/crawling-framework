@@ -78,6 +78,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     crawl_log = pd.DataFrame(columns=["Cat.Abb", "Entries on arxiv.org", "Entries found", "Time", "Full Name"])
 
     temp_count = 0
+    init_batchsize = batchsize
     for cat, subcats in crawling_list.iteritems():
         arxiv_logger.info("Crawling " + cat)
         for subcategory in subcats:
@@ -85,7 +86,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
             crawl_start = time.time()
             cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
 
-            start_range = range(0, cat_count, batchsize)
+            batchsize = init_batchsize
 
             if not limit:
                 limit = batchsize
@@ -93,29 +94,38 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
             if limit < batchsize:
                 batchsize = limit
 
+            start_range = range(0, cat_count, batchsize) + [cat_count]
+
             subcat_df = pd.DataFrame()
             max_count = cat_count // batchsize
             for count, start in enumerate(start_range):
-                arxiv_logger.info("{}: Batch {} out of {} - start:{}|bs:{}".format(subcategory, count, len(start_range)-1,
+                if count == len(start_range) - 1:
+                    break
+                arxiv_logger.info(
+                    "{}: Batch {} out of {} - start:{}|bs:{}".format(subcategory, count + 1, len(start_range) - 1,
+                                                                     start,
+                                                                     start_range[count + 1] - start_range[count]))
                 try_count = 0
                 while True:
                     try:
+                        batchsize = start_range[count + 1] - start_range[count]
+
                         if submission_range and not update_range:
-                            batch = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=limit,
+                            batch = arxiv_crawler.search_arxiv_submission_range(subcategory, limit=batchsize,
                                                                                 batchsize=batchsize,
                                                                                 submittedDateStart=submission_range[0],
                                                                                 submittedDateEnd=submission_range[1],
                                                                                 start=start)
 
                         elif update_range and not submission_range:
-                            batch = arxiv_crawler.search_arxiv_update_range(subcategory, limit=limit,
+                            batch = arxiv_crawler.search_arxiv_update_range(subcategory, limit=batchsize,
                                                                             batchsize=batchsize,
                                                                             updatedStart=update_range[0],
                                                                             updatedEnd=update_range[1],
                                                                             start=start)
 
                         elif submission_range and update_range:
-                            batch = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=limit,
+                            batch = arxiv_crawler.search_arxiv_submission_update_range(subcategory, limit=batchsize,
                                                                                        batchsize=batchsize,
                                                                                        submittedDateStart=
                                                                                        submission_range[
@@ -128,13 +138,31 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
                                                                                        start=start)
 
                         else:
-                            batch = arxiv_crawler.search_arxiv(subcategory, limit=limit, batchsize=batchsize,
+                            batch = arxiv_crawler.search_arxiv(subcategory, limit=batchsize, batchsize=batchsize,
                                                                start=start)
                     except Exception, e:
                         try_count += 1
-                        print("\t\t\t SOME ERROR OCCURED... Retry {}".format(try_count))
+                        if 1 <= batchsize < 30:
+                            try_limit = 2
+                        elif 30 <= batchsize < 200:
+                            try_limit = 3
+                        elif 200 <= batchsize < 400:
+                            try_limit = 4
+                        elif batchsize >= 400:
+                            try_limit = 5
 
-                        # TODO EXCEPTION HANDLING
+                        if try_count >= try_limit:
+                            if batchsize == 1:
+                                arxiv_logger.error("This one arxiv file is shit.".format(subcategory, try_count))
+                                break
+                            batchsize //= 2
+                            start_range.insert(count + 1, start_range[count] + batchsize)
+                            arxiv_logger.exception(
+                                "{}: R-Script - Retry {} - new batchsize {}".format(subcategory, try_count, batchsize),
+                                exc_info=False)
+                        else:
+                            arxiv_logger.exception("{}: R-Script - Retry {}".format(subcategory, try_count),
+                                                   exc_info=False)
                         continue
 
                     else:
