@@ -40,7 +40,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     :param update_range: The range of last-update dates.
     :type update_range: Tuple (start,end).
 
-    :returns:  pd.DataFrame -- the resulting data frame.
+    :returns:  The created folder
     """
 
     # Timestamp of starting datetime
@@ -48,8 +48,10 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Create folder structure
-    working_folder = base_directory + timestamp
+    base_folder = base_directory + timestamp
+    working_folder = base_directory + timestamp + "/arxiv"
     os.makedirs(working_folder)
+    os.makedirs(working_folder + "/temp_files")
 
     # Setup logging
     config = logging_confdict(working_folder, __name__)
@@ -174,8 +176,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
     # Create log files
 
-    crawl_log.to_csv(working_folder + "/crawl_log.csv", sep=";")
-    write_log(working_folder, ts_start, ts_finish)
+    crawling_summary.to_csv(base_folder + "/arxiv_crawl_log.csv", sep=";")
 
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
@@ -196,15 +197,84 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     # for i in range(0, temp_count):
     #     os.remove(working_folder + "/temp_{}.json".format(i))
 
-    return
+    return base_folder
 
 
-def write_log(directory, start_time, end_time):
-    with open(directory + "/log.txt", "wb") as outfile:
-        outfile.write("--- LOG --- " + datetime.datetime.fromtimestamp(start_time).strftime('%Y-%m-%d_%H-%M-%S') + "\n\n")
+default_remove = [u'abstract', u'affiliations', u'link_abstract', u'link_doi', u'link_pdf', u'comment']
 
-        outfile.write("Total crawl time: " + unicode(end_time - start_time) + "s\n")
 
-        outfile.write("Have a look at log.csv for more details on the crawl.\n\n")
+def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
+                  remove_columns=default_remove):
+    """
+    Cleans the crawl results from arxiv.
 
-        outfile.write("TO-DO: Notes and other logging stuff")
+    :param working_folder: Folder containing the files
+    :type working_folder: str
+    :param remove_columns: Columns to be removed from the crawled dataframe. If none given, default is to remove
+                           [u'abstract', u'affiliations',u'link_abstract', u'link_doi', u'link_pdf',u'comment']
+    :type remove_columns: list of str
+    :param earliest_date: Articles before this date are removed
+    :type earliest_date: datetime
+    :param latest_date: Artivles after this date are removed
+    :type latest_date: datetime
+
+    :return: None
+    """
+
+    config = logging_confdict(working_folder + "/arxiv", __name__ + "_cleanup")
+    logging.config.dictConfig(config)
+    arxiv_logger = logging.getLogger(__name__ + "_cleanup")
+
+    # Read in stage_1 raw file
+    try:
+        stage_1_raw = pd.read_json(working_folder + "/arxiv/stage_1_raw.json")
+    except Exception, e:
+        arxiv_logger.exception("Could not load stage_1_raw file")
+    else:
+        arxiv_logger.info("Stage_1_raw successfully loaded")
+
+    # Remove columns
+    arxiv_logger.info("Removing columns")
+    for col in remove_columns:
+        if col in stage_1_raw:
+            del stage_1_raw[col]
+
+
+    # Strip all columns
+    arxiv_logger.info("Stripping all entries")
+
+    def clean(a):
+        a = a.str.replace(r"\n", " ")
+        a = a.str.replace(r"\r", " ")
+        return a
+
+    for col in stage_1_raw.columns:
+        stage_1_raw[col] = clean(stage_1_raw[col])
+
+    # Remove duplicate entries based on arxiv id's
+    arxiv_logger.info("Removing duplicate entries")
+    dupls = stage_1_raw.duplicated(subset=['id'])
+    duplicate_row_indices = stage_1_raw[dupls].index
+
+    stage1 = stage_1_raw.drop(duplicate_row_indices)
+
+    # Change date types to datetime
+    stage1['submitted'] = pd.to_datetime(stage1['submitted'])
+    stage1['updated'] = pd.to_datetime(stage1['updated'])
+
+    # Apply date range based on submisssion date if applicable
+    arxiv_logger.info("Applying date ranges")
+    if earliest_date:
+        stage1 = stage1[[date > earliest_date for date in stage1.submitted]]
+    if latest_date:
+        stage1 = stage1[[date < latest_date for date in stage1.submitted]]
+
+    # Save output
+    stage1.index = range(0, len(stage1.index))
+    try:
+        stage1.to_json(working_folder + "/arxiv/stage_1.json")
+        stage1.to_csv(working_folder + "/arxiv/stage_1.csv", encoding="utf-8", sep=";")
+    except Exception, e:
+        arxiv_logger.exception("Could not write all output files")
+    else:
+        arxiv_logger.info("Wrote json and csv output files")
