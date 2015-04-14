@@ -141,7 +141,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
                         else:
                             batch = arxiv_crawler.search_arxiv(subcategory, limit=batchsize, batchsize=batchsize,
                                                                start=start)
-                    except RuntimeError:
+                    except Exception, e:
                         try_count += 1
                         if 1 <= batchsize < 30:
                             try_limit = 2
