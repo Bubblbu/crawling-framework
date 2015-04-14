@@ -4,6 +4,7 @@
 from __future__ import print_function, division
 
 import os
+import sys
 import gc
 import time
 import datetime
@@ -49,7 +50,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
     # Create folder structure
     base_folder = base_directory + timestamp
-    working_folder = base_directory + timestamp + "/arxiv"
+    working_folder = base_directory + timestamp
     os.makedirs(working_folder)
     os.makedirs(working_folder + "/temp_files")
 
@@ -69,6 +70,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
         arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
     except Exception, e:
         arxiv_logger.exception("Error while loading R-Scripts.")
+        sys.exit('Could not load R-Scripts!')
 
     # arxiv_delay
     if delay:
@@ -140,7 +142,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
                         else:
                             batch = arxiv_crawler.search_arxiv(subcategory, limit=batchsize, batchsize=batchsize,
                                                                start=start)
-                    except Exception, e:
+                    except RuntimeError:
                         try_count += 1
                         if 1 <= batchsize < 30:
                             try_limit = 2
@@ -148,7 +150,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
                             try_limit = 3
                         elif 200 <= batchsize < 400:
                             try_limit = 4
-                        elif batchsize >= 400:
+                        else:
                             try_limit = 5
 
                         if try_count >= try_limit:
@@ -201,9 +203,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
     ts_finish = time.time()
 
-    # Create log files
-
-    crawling_summary.to_csv(base_folder + "/arxiv_crawl_log.csv", sep=";")
+    crawling_summary.to_csv(base_folder + "/arxiv_crawl_summary.csv", sep=";")
 
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
@@ -212,14 +212,14 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     try:
         for i in range(0, temp_count):
             arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
-            temp_dfs.append(pd.io.json.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
+            temp_dfs.append(pd.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
         result_df = pd.concat(temp_dfs)
 
         result_df.index = range(0, len(result_df.index))
         result_df = result_df.fillna(np.nan)
 
         result_df.to_json(working_folder + "/stage_1_raw.json")
-    except Exception, e:
+    except:
         arxiv_logger.exception("Error during concatenation of temporary objects")
 
     # TODO decide if removal of temporary files is needed/useful
@@ -251,13 +251,13 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     :return: None
     """
 
-    config = logging_confdict(working_folder + "/arxiv", __name__ + "_cleanup")
+    config = logging_confdict(working_folder, __name__ + "_cleanup")
     logging.config.dictConfig(config)
     arxiv_logger = logging.getLogger(__name__ + "_cleanup")
 
     # Read in stage_1 raw file
     try:
-        stage_1_raw = pd.read_json(working_folder + "/arxiv/stage_1_raw.json")
+        stage_1_raw = pd.read_json(working_folder + "/stage_1_raw.json")
     except Exception, e:
         arxiv_logger.exception("Could not load stage_1_raw file")
     else:
@@ -268,7 +268,6 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     for col in remove_columns:
         if col in stage_1_raw:
             del stage_1_raw[col]
-
 
     # Strip all columns
     arxiv_logger.info("Stripping all entries")
@@ -302,8 +301,8 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     # Save output
     stage1.index = range(0, len(stage1.index))
     try:
-        stage1.to_json(working_folder + "/arxiv/stage_1.json")
-        stage1.to_csv(working_folder + "/arxiv/stage_1.csv", encoding="utf-8", sep=";")
+        stage1.to_json(working_folder + "/stage_1.json")
+        stage1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";")
     except Exception, e:
         arxiv_logger.exception("Could not write all output files")
     else:
