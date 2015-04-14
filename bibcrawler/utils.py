@@ -206,11 +206,12 @@ def get_subcat_fullname(subcat):
 
 def clean_dataset(df, logger, earliest_date, latest_date,
                   remove_columns):
-        # Remove columns
-    logger.info("Removing columns")
-    for col in remove_columns:
-        if col in df:
-            del df[col]
+    # Remove columns
+    if remove_columns:
+        logger.info("Removing columns")
+        for col in remove_columns:
+            if col in df:
+                del df[col]
 
     # Strip all columns
     logger.info("Stripping all entries")
