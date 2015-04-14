@@ -49,7 +49,6 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Create folder structure
-    base_folder = base_directory + timestamp
     working_folder = base_directory + timestamp
     os.makedirs(working_folder)
     os.makedirs(working_folder + "/temp_files")
@@ -203,7 +202,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
 
     ts_finish = time.time()
 
-    crawling_summary.to_csv(base_folder + "/arxiv_crawl_summary.csv", sep=";")
+    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv", sep=";")
 
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
@@ -227,7 +226,7 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     # for i in range(0, temp_count):
     # os.remove(working_folder + "/temp_{}.json".format(i))
 
-    return base_folder
+    return working_folder
 
 
 default_remove = [u'abstract', u'affiliations', u'link_abstract', u'link_doi', u'link_pdf', u'comment']
