@@ -5,47 +5,87 @@ from __future__ import print_function, division
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
+import rpy2.robjects.numpy2ri
+
+rpy2.robjects.numpy2ri.activate()
+from rpy2.robjects import pandas2ri
+
+pandas2ri.activate()
 import pandas.rpy.common as com
 import pandas as pd
 import numpy as np
+import logging
+import logging.config
+from logging_dict import logging_confdict
 
-import os
+import os, sys
 import gc
 import time
 import datetime
 import threading
 import Queue
 
+import csv
+
 from config import base_directory
 from utils import levenshtein_ratio, LR
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-# from guppy import hpy
-
+base_folder = None
 working_folder = None
 
 
-class PrintThread(threading.Thread):
-    def __init__(self, queue):
+class ProcessingThread(threading.Thread):
+    def __init__(self, input_queue, output_queue):
         threading.Thread.__init__(self)
         self.event = threading.Event()
-        self.queue = queue
+        self.iq = input_queue
+        self.oq = output_queue
 
     def run(self):
         print("running")
-        while True:
-            try:
-                result = self.queue.get_nowait()
-                with open(working_folder + "/dois.csv", "a") as f:
-                    f.write("{}\t{}\t{}\t{}\n".format(result[0], result[1].encode('utf-8'), result[2].encode('utf-8'),
-                                                      result[3].encode('utf-8')))
-                self.queue.task_done()
-            except Queue.Empty:
-                if self.event.is_set():
-                    break
+        with open(working_folder + "/crossref_crawl_summary.csv", "ab") as f:
+            writer = csv.writer(f, delimiter=";")
+            while True:
+                try:
+                    result = self.iq.get_nowait()
 
-class CrossrefThread(threading.Thread):
+                    lr = levenshtein_ratio(result['orig_title'], result['cr_title'])
+
+                    if lr <= LR:
+                        line = [result['index'],
+                                result['cr_title'].encode('utf-8'),
+                                result['orig_title'].encode('utf-8'),
+                                result['cr_doi'].encode('utf-8'),
+                                lr,
+                                True]
+                        result = {'idx': result['index'],
+                                  'cr_title': result['cr_title'],
+                                  'cr_doi': result['cr_doi'],
+                                  'lr': lr}
+                    else:
+                        line = [result['index'],
+                                result['cr_title'].encode('utf-8'),
+                                result['orig_title'].encode('utf-8'),
+                                result['cr_doi'].encode('utf-8'),
+                                lr,
+                                False]
+                        result = {'idx': result['index'],
+                                  'cr_title': np.nan,
+                                  'cr_doi': np.nan,
+                                  'lr': lr}
+
+                    writer.writerow(line)
+                    self.oq.put(result)
+                    self.iq.task_done()
+
+                except Queue.Empty:
+                    if self.event.is_set():
+                        break
+
+
+class CrossrefAPIThread(threading.Thread):
     def __init__(self, queue, output_queue, doi_lookuper):
         threading.Thread.__init__(self)
         self.event = threading.Event()
@@ -62,18 +102,21 @@ class CrossrefThread(threading.Thread):
         while True:
             try:
                 self.idx, self.author, self.title, self.date = self.q.get_nowait()
-                print(self.idx)
+                temp = com.convert_robj(self.doi_lookuper.crossref(self.author,
+                                                                   self.title,
+                                                                   self.date.strftime("%Y-%m-%d %H:%M:%S")))
 
-                temp = com.convert_robj(self.doi_lookuper.crossref(self.author, self.title, self.date))
-                # temp['order'] = self.idx
-                # temp['orig_title'] = self.title
-                title = temp['title'][1]
+                # Use index 1 because R is 1-indexed -> 0 is not the first element
+                cr_title = temp['title'][1]
                 if 'DOI' in temp:
-                    doi = temp['DOI'][1]
+                    cr_doi = temp['DOI'][1]
                 else:
-                    doi = "nan"
+                    cr_doi = np.nan
 
-                self.output_queue.put((self.idx, title, self.title, doi))
+                self.output_queue.put({'index': self.idx,
+                                       'cr_title': unicode(cr_title.strip()),
+                                       'orig_title': self.title.strip(),
+                                       'cr_doi': cr_doi.strip()})
 
                 # Garbage collection
                 R.r('gc()')
@@ -92,33 +135,27 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
         string = ''.join(f.readlines())
     doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
 
-    input_queue = Queue.Queue()
-    output_queue = Queue.Queue()
+    cr_input_queue = Queue.Queue()
+    cr_to_process = Queue.Queue()
+    process_to_result = Queue.Queue()
 
-    cr_lookup = pd.DataFrame()
     for idx, author, title, date in zip(index, authors, titles, submitted):
         tokens = author.split("|")
         if len(tokens) >= 15:
             author = "|".join(tokens[:15])
-        input_queue.put((idx, author, title, date))
+        cr_input_queue.put((idx, author, title, date))
 
     crossref_threads = []
 
-    # heapy = HeapyThread()
-    # heapy.start()
-
-    with open(working_folder + "/dois.csv", "wb") as f:
-        f.write("order\ttitle\torig_title\tDOI\n")
-
-    print_thread = PrintThread(output_queue)
+    process_thread = ProcessingThread(cr_to_process, process_to_result)
 
     print("\nStarting crossref crawl process...")
     for i in range(num_threads):
-        thread = CrossrefThread(input_queue, output_queue, doi_lookuper)
+        thread = CrossrefAPIThread(cr_input_queue, cr_to_process, doi_lookuper)
         thread.start()
         crossref_threads.append(thread)
 
-    print_thread.start()
+    process_thread.start()
 
     for thread in crossref_threads:
         thread.event.set()
@@ -126,43 +163,17 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
     for thread in crossref_threads:
         thread.join()
 
-    print_thread.event.set()
-    print_thread.join()
+    process_thread.event.set()
+    process_thread.join()
 
-    cr_lookup = pd.read_csv(working_folder + "/dois.csv", sep="\t")
+    results = []
+    while not process_to_result.empty():
+        results.append(process_to_result.get())
 
-    # while True:
-    # try:
-    # df = output_queue.get_nowait()
-    #         cr_lookup = pd.concat([cr_lookup, df])
-    #     except Queue.Empty:
-    #         break
-
-    cr_lookup = cr_lookup.sort(columns=['order'], ascending=True)
-    cr_lookup.index = range(0, len(cr_lookup.index))
-
-    cr_dois = []
-    lr_results = []
-    cr_titles = []
-
-    print("\nChecking titles with LR")
-    for idx, (original, found, doi) in enumerate(zip(cr_lookup.orig_title, cr_lookup.title, cr_lookup.DOI)):
-        print(idx)
-        lr = levenshtein_ratio(original, found)
-
-        if lr <= LR:
-            cr_dois.append(doi)
-            cr_titles.append(found)
-        else:
-            cr_dois.append(np.nan)
-            cr_titles.append(np.nan)
-
-        lr_results.append(lr)
-
-    return cr_dois, lr_results, cr_titles
+    return results
 
 
-def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
+def doi_lookup(num_workers=1, input_folder=None, mode='all'):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -170,8 +181,8 @@ def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
 
     Possible candidate documents are matched with original arxiv-documents using Levenshtein Ratio (Schloegl et al)
 
-    :param stage1_dir: The folder containing the stage 1 data. If not given, the most recent folder will be used to work
-    :type stage1_dir: str
+    :param base_folder: The folder containing the stage 1 data. If not given, the most recent folder will be used to work
+    :type base_folder: str
     :param mode: The DOI Registration Agencies to be crawled
     :type mode: str
 
@@ -181,49 +192,77 @@ def doi_lookup(num_workers=1, stage1_dir=None, mode='all'):
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Create folder structure
-    if not stage1_dir:
+    global base_folder
+    if not input_folder:
         all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
-        stage1_dir = latest_subdir + "/"
-        print("\nStage-1 directory was not given. Latest directory has been chosen:\n<<" + stage1_dir + ">>")
+        base_folder = latest_subdir + "/"
     else:
-        stage1_dir = base_directory + stage1_dir
-        if stage1_dir[-1] != "/":
-            stage1_dir += "/"
-        print("\nStage-1 directory was chosen:\n\n<<" + stage1_dir + ">>")
+        base_folder = base_directory + input_folder
+        if base_folder[-1] != "/":
+            base_folder += "/"
 
     global working_folder
-    working_folder = stage1_dir + timestamp
-    os.makedirs(working_folder)
-    print("\nCreated new folder: <<" + working_folder + ">>")
+    if working_folder is None:
+        working_folder = base_folder + timestamp
+
+    os.mkdir(working_folder)
+
+    with open(working_folder + "/crossref_crawl_summary.csv", "wb") as f:
+        writer = csv.writer(f, delimiter=";")
+        header = ["Index", "Title", "Orig_title", "DOI", "LR", "Match"]
+        writer.writerow(header)
+
+    # Setup logging
+    config = logging_confdict(working_folder, __name__)
+    logging.config.dictConfig(config)
+    cr_logger = logging.getLogger(__name__)
+
+    cr_logger.info("\nCreated new folder: <<" + working_folder + ">>")
 
     # Read in stage 1 file
-    print("\nReading in stage_1.json ... (Might take a few seconds)")
-    df = pd.io.json.read_json(stage1_dir + "stage_1.json")
-    df.index = range(0, len(df.index))
+    cr_logger.debug("\nReading in stage_1.json ... (Might take a few seconds)")
+    try:
+        stage_1 = pd.read_json(base_folder + "/stage_1.json")
+    except:
+        cr_logger.exception("Problem occured while reading ")
+        sys.exit("Could not read stage_1 file")
+    else:
+        stage_1.index = range(0, len(stage_1.index))
 
-    # Crawl additional dois
-    cr_dois = []
-    lr_results = []
-    cr_titles = []
+    stage_1['submitted'] = pd.to_datetime(stage_1['submitted'])
+    stage_1['updated'] = pd.to_datetime(stage_1['updated'])
 
     if mode == 'all':
-        cr_dois, lr_results, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
-                                                         num_threads=num_workers)
+        results = crossref_lookup(stage_1.index,
+                                  stage_1.authors,
+                                  stage_1.title,
+                                  stage_1.submitted,
+                                  num_threads=num_workers)
 
     elif mode == 'crossref':
-        cr_dois, lr_results, cr_titles = crossref_lookup(df.index, df.authors, df.title, df.submitted,
-                                                         num_threads=num_workers)
+        results = crossref_lookup(stage_1.index,
+                                  stage_1.authors,
+                                  stage_1.title,
+                                  stage_1.submitted,
+                                  num_threads=num_workers)
 
     elif mode == 'datacite':
         pass
 
-    df['crossref_doi'] = pd.Series(cr_dois)
-    df['levenshtein_ratio'] = pd.Series(lr_results)
-    df['crossref_title'] = pd.Series(cr_titles)
+    cr_data = pd.DataFrame(results)
+    cr_data = cr_data.set_index(["idx"])
 
-    df.sort_index(inplace=True)
+    stage_2_raw = pd.merge(stage_1, cr_data, left_index=True, right_index=True, how='left')
 
-    df.to_json(working_folder + "/stage_2.json")
+    stage_2_raw.sort_index(inplace=True)
+
+    try:
+        stage_2_raw.to_json(working_folder + "/stage_2_raw.json")
+        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8", sep=";")
+    except Exception, e:
+        cr_logger.exception("Could not write all output files")
+    else:
+        cr_logger.info("Wrote json and csv output files")
 
     return 0
