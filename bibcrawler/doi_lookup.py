@@ -12,7 +12,6 @@ from rpy2.robjects import pandas2ri
 
 pandas2ri.activate()
 import pandas.rpy.common as com
-import pandas as pd
 import numpy as np
 import logging
 import logging.config
@@ -23,36 +22,34 @@ import gc
 import time
 import datetime
 import threading
+import multiprocessing as mp
 import Queue
 
 import csv
 
 from config import base_directory
-from utils import levenshtein_ratio, LR
+from utils import *
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
-base_folder = None
-working_folder = None
-
 
 class ProcessingThread(threading.Thread):
-    def __init__(self, input_queue, output_queue):
+    def __init__(self, working_folder, input_queue, output_queue):
         threading.Thread.__init__(self)
         self.event = threading.Event()
         self.iq = input_queue
         self.oq = output_queue
+        self.wdir = working_folder
 
     def run(self):
         print("running")
-        with open(working_folder + "/crossref_crawl_summary.csv", "ab") as f:
+        with open(self.wdir + "/crossref_crawl_summary.csv", "ab") as f:
             writer = csv.writer(f, delimiter=";")
             while True:
                 try:
                     result = self.iq.get_nowait()
 
                     lr = levenshtein_ratio(result['orig_title'], result['cr_title'])
-
                     if lr <= LR:
                         line = [result['index'],
                                 result['cr_title'].encode('utf-8'),
@@ -128,7 +125,7 @@ class CrossrefAPIThread(threading.Thread):
                     break
 
 
-def crossref_lookup(index, authors, titles, submitted, num_threads=1):
+def crossref_lookup(working_folder, index, authors, titles, submitted, num_threads=1):
     # Load r-scripts
     print("\nLoading R-Scripts ...")
     with open('r_scripts/doi_lookup.R', 'r') as f:
@@ -145,11 +142,10 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
             author = "|".join(tokens[:15])
         cr_input_queue.put((idx, author, title, date))
 
-    crossref_threads = []
-
-    process_thread = ProcessingThread(cr_to_process, process_to_result)
+    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result)
 
     print("\nStarting crossref crawl process...")
+    crossref_threads = []
     for i in range(num_threads):
         thread = CrossrefAPIThread(cr_input_queue, cr_to_process, doi_lookuper)
         thread.start()
@@ -173,7 +169,7 @@ def crossref_lookup(index, authors, titles, submitted, num_threads=1):
     return results
 
 
-def doi_lookup(num_workers=1, input_folder=None, mode='all'):
+def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -181,8 +177,8 @@ def doi_lookup(num_workers=1, input_folder=None, mode='all'):
 
     Possible candidate documents are matched with original arxiv-documents using Levenshtein Ratio (Schloegl et al)
 
-    :param base_folder: The folder containing the stage 1 data. If not given, the most recent folder will be used to work
-    :type base_folder: str
+    :param input_folder: The folder containing the stage 1 data. If not given, the most recent folder will be used to work
+    :type input_folder: str
     :param mode: The DOI Registration Agencies to be crawled
     :type mode: str
 
@@ -202,10 +198,7 @@ def doi_lookup(num_workers=1, input_folder=None, mode='all'):
         if base_folder[-1] != "/":
             base_folder += "/"
 
-    global working_folder
-    if working_folder is None:
-        working_folder = base_folder + timestamp
-
+    working_folder = base_folder + timestamp
     os.mkdir(working_folder)
 
     with open(working_folder + "/crossref_crawl_summary.csv", "wb") as f:
@@ -233,24 +226,43 @@ def doi_lookup(num_workers=1, input_folder=None, mode='all'):
     stage_1['submitted'] = pd.to_datetime(stage_1['submitted'])
     stage_1['updated'] = pd.to_datetime(stage_1['updated'])
 
-    if mode == 'all':
-        results = crossref_lookup(stage_1.index,
-                                  stage_1.authors,
-                                  stage_1.title,
-                                  stage_1.submitted,
-                                  num_threads=num_workers)
+    df_ranges = range(0, len(stage_1.index), len(stage_1.index) // num_processes) + [len(stage_1.index)]
+    pool_args = []
+    for idx in range(num_processes):
+        indices = stage_1[df_ranges[idx]:df_ranges[idx + 1]].index
+        authors = stage_1[df_ranges[idx]:df_ranges[idx + 1]].authors
+        titles = stage_1[df_ranges[idx]:df_ranges[idx + 1]].title
+        submitted = stage_1[df_ranges[idx]:df_ranges[idx + 1]].submitted
+        pool_args.append([indices, authors, titles, submitted, ])
 
-    elif mode == 'crossref':
-        results = crossref_lookup(stage_1.index,
-                                  stage_1.authors,
-                                  stage_1.title,
-                                  stage_1.submitted,
-                                  num_threads=num_workers)
+    pool = mp.Pool(processes=num_processes)
+    results = [pool.apply_async(crossref_lookup,
+                                args=(working_folder, x[0], x[1], x[2], x[3], num_threads)) for x in pool_args]
+    pool.close()
+    pool.join()
 
-    elif mode == 'datacite':
-        pass
+    output = []
+    for p in results:
+        output.extend(p.get())
 
-    cr_data = pd.DataFrame(results)
+    # if mode == 'all':
+    # results = crossref_lookup(stage_1.index,
+    # stage_1.authors,
+    # stage_1.title,
+    # stage_1.submitted,
+    #                               num_threads=num_workers)
+    #
+    # elif mode == 'crossref':
+    #     results = crossref_lookup(stage_1.index,
+    #                               stage_1.authors,
+    #                               stage_1.title,
+    #                               stage_1.submitted,
+    #                               num_threads=num_workers)
+    #
+    # elif mode == 'datacite':
+    #     pass
+
+    cr_data = pd.DataFrame(output)
     cr_data = cr_data.set_index(["idx"])
 
     stage_2_raw = pd.merge(stage_1, cr_data, left_index=True, right_index=True, how='left')
@@ -265,4 +277,3 @@ def doi_lookup(num_workers=1, input_folder=None, mode='all'):
     else:
         cr_logger.info("Wrote json and csv output files")
 
-    return 0
