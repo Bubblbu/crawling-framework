@@ -277,3 +277,74 @@ def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
     else:
         cr_logger.info("Wrote json and csv output files")
 
+    return working_folder
+
+
+def doi_cleanup(working_folder, earliest_date=None, latest_date=None,
+                remove_columns=None):
+    """
+    Cleans the crawl results from crossref.
+
+    :param working_folder: Folder containing the files
+    :type working_folder: str
+    :param remove_columns: Columns to be removed from the crawled dataframe. If none given, default is None
+    :type remove_columns: list of str
+    :param earliest_date: Articles before this date are removed
+    :type earliest_date: datetime
+    :param latest_date: Artivles after this date are removed
+    :type latest_date: datetime
+
+    :return: None
+    """
+
+    config = logging_confdict(working_folder, __name__ + "_cleanup")
+    logging.config.dictConfig(config)
+    cr_logger = logging.getLogger(__name__ + "_cleanup")
+
+    # Read in stage_1 raw file
+    try:
+        stage_2_raw = pd.read_json(working_folder + "/stage_2_raw.json")
+    except Exception, e:
+        cr_logger.exception("Could not load stage_1_raw file")
+        sys.exit("Could not load stage 2 raw")
+    else:
+        cr_logger.info("Stage_1_raw successfully loaded")
+
+    stage_2 = clean_dataset(stage_2_raw, cr_logger, earliest_date, latest_date, remove_columns)
+
+    cr_unique_dois = stage_2.cr_doi.unique()
+    arxiv_unique_dois = stage_2.doi.unique()
+    common = set(cr_unique_dois) & set(arxiv_unique_dois)
+
+    cr_logger.info("cr:{}, arxiv:{}, common:{}".format(len(cr_unique_dois), len(arxiv_unique_dois), len(common)))
+
+    Noneless_stage2 = stage_2[[elem is not np.nan for elem in stage_2.cr_doi]]
+    multiple_dois_bool = Noneless_stage2.cr_doi.duplicated()
+    multiple_dois = Noneless_stage2[multiple_dois_bool].cr_doi
+
+    bad_indices = []
+    good_indices = []
+    for count, bad_doi in enumerate(multiple_dois, start=1):
+        temp = Noneless_stage2[[elem == bad_doi for elem in Noneless_stage2.cr_doi]]
+        for idx, row in temp.iterrows():
+            if row.doi is not np.nan:
+                if row.doi.lower() == row.cr_doi.lower():
+                    good_indices.append(idx)
+                    continue
+            bad_indices.append(idx)
+
+    cr_logger.info("Kicked cr_doi - entries: {}".format(len(bad_indices)))
+    cr_logger.info("Accepted cr_doi - entries: {}".format(len(good_indices)))
+
+    for bad_idx in bad_indices:
+        stage_2.loc[bad_idx].cr_doi = u"NOMATCH"
+
+    stage_2.index = range(0, len(stage_2.index))
+
+    try:
+        stage_2.to_json(working_folder + "/stage_2.json")
+        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8", sep=";")
+    except Exception, e:
+        cr_logger.exception("Could not write all output files")
+    else:
+        cr_logger.info("Wrote json and csv output files")
