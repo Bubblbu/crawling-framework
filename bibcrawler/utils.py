@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 import re
+import pandas as pd
 from Levenshtein import distance
 
 #: Levenshtein Ratio - Schloegl et al, 2014
@@ -201,3 +202,46 @@ def get_subcat_fullname(subcat):
         subname = ARXIV_CATS[parts[0]]['subcats'][parts[1]]
 
         return unicode(name + " - " + subname)
+
+
+def clean_dataset(df, logger, earliest_date, latest_date,
+                  remove_columns):
+        # Remove columns
+    logger.info("Removing columns")
+    for col in remove_columns:
+        if col in df:
+            del df[col]
+
+    # Strip all columns
+    logger.info("Stripping all entries")
+
+    def clean(a):
+        a = a.str.replace(r"\n", " ")
+        a = a.str.replace(r"\r", " ")
+        return a
+
+    for col in df.columns:
+        df[col] = clean(df[col])
+
+    # Remove duplicate entries based on arxiv id's
+    logger.info("Removing duplicate entries")
+    dupls = df.duplicated(subset=['id'])
+    duplicate_row_indices = df[dupls].index
+
+    df_new = df.drop(duplicate_row_indices)
+
+    # Change date types to datetime
+    df_new['submitted'] = pd.to_datetime(df_new['submitted'])
+    df_new['updated'] = pd.to_datetime(df_new['updated'])
+
+    # Apply date range based on submisssion date if applicable
+    logger.info("Applying date ranges")
+    if earliest_date:
+        df_new = df_new[[date > earliest_date for date in df_new.submitted]]
+    if latest_date:
+        df_new = df_new[[date < latest_date for date in df_new.submitted]]
+
+    # Save output
+    df_new.index = range(0, len(df_new.index))
+
+    return df_new

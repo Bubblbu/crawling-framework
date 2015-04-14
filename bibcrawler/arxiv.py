@@ -19,7 +19,7 @@ import rpy2.robjects as R
 import pandas.rpy.common as com
 
 from config import base_directory
-from utils import get_subcat_fullname
+from utils import *
 
 __author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
 
@@ -262,46 +262,11 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     else:
         arxiv_logger.info("Stage_1_raw successfully loaded")
 
-    # Remove columns
-    arxiv_logger.info("Removing columns")
-    for col in remove_columns:
-        if col in stage_1_raw:
-            del stage_1_raw[col]
+    stage_1 = clean_dataset(stage_1_raw, arxiv_logger, earliest_date, latest_date, remove_columns)
 
-    # Strip all columns
-    arxiv_logger.info("Stripping all entries")
-
-    def clean(a):
-        a = a.str.replace(r"\n", " ")
-        a = a.str.replace(r"\r", " ")
-        return a
-
-    for col in stage_1_raw.columns:
-        stage_1_raw[col] = clean(stage_1_raw[col])
-
-    # Remove duplicate entries based on arxiv id's
-    arxiv_logger.info("Removing duplicate entries")
-    dupls = stage_1_raw.duplicated(subset=['id'])
-    duplicate_row_indices = stage_1_raw[dupls].index
-
-    stage1 = stage_1_raw.drop(duplicate_row_indices)
-
-    # Change date types to datetime
-    stage1['submitted'] = pd.to_datetime(stage1['submitted'])
-    stage1['updated'] = pd.to_datetime(stage1['updated'])
-
-    # Apply date range based on submisssion date if applicable
-    arxiv_logger.info("Applying date ranges")
-    if earliest_date:
-        stage1 = stage1[[date > earliest_date for date in stage1.submitted]]
-    if latest_date:
-        stage1 = stage1[[date < latest_date for date in stage1.submitted]]
-
-    # Save output
-    stage1.index = range(0, len(stage1.index))
     try:
-        stage1.to_json(working_folder + "/stage_1.json")
-        stage1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";")
+        stage_1.to_json(working_folder + "/stage_1.json")
+        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";")
     except Exception, e:
         arxiv_logger.exception("Could not write all output files")
     else:
