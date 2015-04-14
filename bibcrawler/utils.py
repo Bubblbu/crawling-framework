@@ -15,9 +15,9 @@ new_arxiv_format = re.compile(r'(?:ar[X|x]iv:)?(\d{4}\.\d{4,5})(?:v\d+)?$')
 
 
 def levenshtein_ratio(string1, string2):
-    if type(string1) is not str:
+    if type(string1) is not unicode:
         string1 = ""
-    if type(string2) is not str:
+    if type(string2) is not unicode:
         string2 = ""
 
     original_edited = regex_alphanum.sub(" ", string1).strip()
