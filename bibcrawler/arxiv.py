@@ -271,3 +271,26 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
         arxiv_logger.exception("Could not write all output files")
     else:
         arxiv_logger.info("Wrote json and csv output files")
+
+
+def test_merge(temp_count, timestamp):
+    working_folder = base_directory + timestamp
+    config = logging_confdict(working_folder, __name__)
+    logging.config.dictConfig(config)
+    arxiv_logger = logging.getLogger(__name__)
+
+    temp_dfs = []
+    try:
+        for i in range(0, temp_count):
+            arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
+            temp_dfs.append(pd.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
+        result_df = pd.concat(temp_dfs)
+
+        result_df.index = range(0, len(result_df.index))
+        result_df = result_df.fillna(np.nan)
+
+        result_df.to_json(working_folder + "/stage_1_raw.json")
+    except:
+        arxiv_logger.exception("Error during concatenation of temporary objects")
+
+    return working_folder

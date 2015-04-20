@@ -61,6 +61,7 @@ class ProcessingThread(threading.Thread):
                                   'cr_title': result['cr_title'],
                                   'cr_doi': result['cr_doi'],
                                   'lr': lr}
+                        print("FOUND DOI", lr)
                     else:
                         line = [result['index'],
                                 result['cr_title'].encode('utf-8'),
@@ -99,6 +100,7 @@ class CrossrefAPIThread(threading.Thread):
         while True:
             try:
                 self.idx, self.author, self.title, self.date = self.q.get_nowait()
+                print(self.idx)
                 temp = com.convert_robj(self.doi_lookuper.crossref(self.author,
                                                                    self.title,
                                                                    self.date.strftime("%Y-%m-%d %H:%M:%S")))
@@ -222,6 +224,8 @@ def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
         sys.exit("Could not read stage_1 file")
     else:
         stage_1.index = range(0, len(stage_1.index))
+
+    # stage_1 = stage_1[300:700]
 
     stage_1['submitted'] = pd.to_datetime(stage_1['submitted'])
     stage_1['updated'] = pd.to_datetime(stage_1['updated'])
