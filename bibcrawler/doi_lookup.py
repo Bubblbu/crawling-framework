@@ -8,24 +8,21 @@ import rpy2.robjects as R
 import rpy2.robjects.numpy2ri
 
 rpy2.robjects.numpy2ri.activate()
-from rpy2.robjects import pandas2ri
-
-pandas2ri.activate()
 import pandas.rpy.common as com
-import numpy as np
-import logging
-import logging.config
-from logging_dict import logging_confdict
+import gc
 
 import os, sys
-import gc
-import time
-import datetime
+import time, datetime
 import threading
 import multiprocessing as mp
 import Queue
 
+import numpy as np
 import csv
+
+import logging
+import logging.config
+from logging_dict import logging_confdict
 
 from config import base_directory
 from utils import *
@@ -61,7 +58,6 @@ class ProcessingThread(threading.Thread):
                                   'cr_title': result['cr_title'],
                                   'cr_doi': result['cr_doi'],
                                   'lr': lr}
-                        print("FOUND DOI", lr)
                     else:
                         line = [result['index'],
                                 result['cr_title'].encode('utf-8'),
@@ -100,17 +96,19 @@ class CrossrefAPIThread(threading.Thread):
         while True:
             try:
                 self.idx, self.author, self.title, self.date = self.q.get_nowait()
-                print(self.idx)
                 temp = com.convert_robj(self.doi_lookuper.crossref(self.author,
                                                                    self.title,
                                                                    self.date.strftime("%Y-%m-%d %H:%M:%S")))
 
                 # Use index 1 because R is 1-indexed -> 0 is not the first element
-                cr_title = temp['title'][1]
-                if 'DOI' in temp:
+                try:
+                    cr_title = temp['title'][1]
+                except KeyError:
+                    cr_title = ""
+                try:
                     cr_doi = temp['DOI'][1]
-                else:
-                    cr_doi = np.nan
+                except KeyError:
+                    cr_doi = ""
 
                 self.output_queue.put({'index': self.idx,
                                        'cr_title': unicode(cr_title.strip()),
@@ -222,21 +220,22 @@ def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
     except:
         cr_logger.exception("Problem occured while reading ")
         sys.exit("Could not read stage_1 file")
-    else:
-        stage_1.index = range(0, len(stage_1.index))
+
+    stage_1.sort_index(inplace=True)
+    stage_1.index = range(0, len(stage_1.index))
 
     # stage_1 = stage_1[300:700]
 
-    stage_1['submitted'] = pd.to_datetime(stage_1['submitted'])
-    stage_1['updated'] = pd.to_datetime(stage_1['updated'])
+    stage_1['submitted'] = pd.to_datetime(stage_1['submitted'], unit="ms")
 
     df_ranges = range(0, len(stage_1.index), len(stage_1.index) // num_processes) + [len(stage_1.index)]
     pool_args = []
     for idx in range(num_processes):
-        indices = stage_1[df_ranges[idx]:df_ranges[idx + 1]].index
-        authors = stage_1[df_ranges[idx]:df_ranges[idx + 1]].authors
-        titles = stage_1[df_ranges[idx]:df_ranges[idx + 1]].title
-        submitted = stage_1[df_ranges[idx]:df_ranges[idx + 1]].submitted
+        cr_logger.info("Starting process {}".format(idx))
+        indices = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].index
+        authors = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].authors
+        titles = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].title
+        submitted = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
         pool_args.append([indices, authors, titles, submitted, ])
 
     pool = mp.Pool(processes=num_processes)
@@ -245,32 +244,18 @@ def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
     pool.close()
     pool.join()
 
+    cr_logger.info("All processes finished")
+
     output = []
     for p in results:
         output.extend(p.get())
 
-    # if mode == 'all':
-    # results = crossref_lookup(stage_1.index,
-    # stage_1.authors,
-    # stage_1.title,
-    # stage_1.submitted,
-    #                               num_threads=num_workers)
-    #
-    # elif mode == 'crossref':
-    #     results = crossref_lookup(stage_1.index,
-    #                               stage_1.authors,
-    #                               stage_1.title,
-    #                               stage_1.submitted,
-    #                               num_threads=num_workers)
-    #
-    # elif mode == 'datacite':
-    #     pass
-
     cr_data = pd.DataFrame(output)
     cr_data = cr_data.set_index(["idx"])
 
-    stage_2_raw = pd.merge(stage_1, cr_data, left_index=True, right_index=True, how='left')
+    cr_logger.info("\nMerging stage_1 dataset and crossref results")
 
+    stage_2_raw = pd.merge(stage_1, cr_data, left_index=True, right_index=True, how='left')
     stage_2_raw.sort_index(inplace=True)
 
     try:
@@ -279,7 +264,7 @@ def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
-        cr_logger.info("Wrote json and csv output files")
+        cr_logger.info("Wrote stage_2_raw json and csv output files")
 
     return working_folder
 
@@ -322,14 +307,14 @@ def doi_cleanup(working_folder, earliest_date=None, latest_date=None,
 
     cr_logger.info("cr:{}, arxiv:{}, common:{}".format(len(cr_unique_dois), len(arxiv_unique_dois), len(common)))
 
-    Noneless_stage2 = stage_2[[elem is not np.nan for elem in stage_2.cr_doi]]
-    multiple_dois_bool = Noneless_stage2.cr_doi.duplicated()
-    multiple_dois = Noneless_stage2[multiple_dois_bool].cr_doi
+    stage_2_no_nan = stage_2[[elem is not np.nan for elem in stage_2.cr_doi]]
+    multiple_dois_bool = stage_2_no_nan.cr_doi.duplicated()
+    multiple_dois = stage_2_no_nan[multiple_dois_bool].cr_doi
 
     bad_indices = []
     good_indices = []
     for count, bad_doi in enumerate(multiple_dois, start=1):
-        temp = Noneless_stage2[[elem == bad_doi for elem in Noneless_stage2.cr_doi]]
+        temp = stage_2_no_nan[[elem == bad_doi for elem in stage_2_no_nan.cr_doi]]
         for idx, row in temp.iterrows():
             if row.doi is not np.nan:
                 if row.doi.lower() == row.cr_doi.lower():
@@ -341,7 +326,7 @@ def doi_cleanup(working_folder, earliest_date=None, latest_date=None,
     cr_logger.info("Accepted cr_doi - entries: {}".format(len(good_indices)))
 
     for bad_idx in bad_indices:
-        stage_2.loc[bad_idx].cr_doi = u"NOMATCH"
+        stage_2.loc[bad_idx, ['cr_doi']] = u"NO_DOI_MATCH"
 
     stage_2.index = range(0, len(stage_2.index))
 
@@ -351,4 +336,4 @@ def doi_cleanup(working_folder, earliest_date=None, latest_date=None,
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
-        cr_logger.info("Wrote json and csv output files")
+        cr_logger.info("Wrote stage-2 cleaned json and csv output files")
