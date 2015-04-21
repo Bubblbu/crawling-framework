@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 import re
 import pandas as pd
+from numpy import nan
 from Levenshtein import distance
 
 #: Levenshtein Ratio - Schloegl et al, 2014
@@ -215,7 +216,6 @@ def clean_dataset(df, logger, earliest_date, latest_date,
 
     # Strip all columns
     logger.info("Stripping all entries")
-
     def clean(a):
         a = a.str.replace(r"\n", " ")
         a = a.str.replace(r"\r", " ")
@@ -223,6 +223,9 @@ def clean_dataset(df, logger, earliest_date, latest_date,
 
     for col in df.columns:
         df[col] = clean(df[col])
+
+    df.fillna(nan, inplace=True)
+    df = df.replace("",nan)
 
     # Remove duplicate entries based on arxiv id's
     logger.info("Removing duplicate entries")
