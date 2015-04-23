@@ -6,15 +6,124 @@ from __future__ import print_function, division
 import os
 import time
 import datetime
+import threading
+import Queue
 
 import numpy as np
-import pandas as pd
 
 from config import base_directory, mndly_config
-from utils import levenshtein_ratio, LR, doi_check, old_arxiv_format, new_arxiv_format
+from utils import *
+
+import logging
+import logging.config
+from logging_dict import logging_confdict
 
 from mendeley import Mendeley
 from mendeley.exception import MendeleyException, MendeleyApiException
+
+
+class MendeleyThread(threading.Thread):
+    def __init__(self, logger, input_q, output_q, max_len, session):
+        threading.Thread.__init__(self)
+        self.logger = logger
+        self.input_q = input_q
+        self.output_q = output_q
+        self.max_len = max_len
+        self.session = session
+
+    def run(self):
+        while not self.input_q.empty():
+            count, row = self.input_q.get_nowait()
+            count = int(count)
+
+            arxiv_document = None
+            doi_document = None
+
+            arxiv_id = row['id']
+            found_regex = new_arxiv_format.findall(arxiv_id)
+            if found_regex:
+                arxiv_id = found_regex[0]
+            else:
+                found_regex = old_arxiv_format.findall(arxiv_id)
+                if found_regex:
+                    arxiv_id = found_regex[0]
+
+            if doi_check.match(str(row['doi'])):
+                doi = row['doi']
+            else:
+                if doi_check.match(str(row['cr_doi'])):
+                    doi = row['cr_doi']
+                else:
+                    doi = None
+
+            self.logger.debug("\n=== FILE {} of {} === id:{}".format(count, self.max_len, arxiv_id))
+
+            src = {'arxiv_id': arxiv_id,
+                   'arxiv_doi': row['doi'],
+                   'cr_doi': row['cr_doi'],
+                   'title': row['title'],
+                   'submitted': row['submitted'],
+                   'mndly_path': np.nan}
+
+            if doi:
+                try:
+                    doi_document = self.session.catalog.by_identifier(doi=doi, view='all')
+                except (MendeleyException, MendeleyApiException), e:
+                    pass
+                except Exception, e:
+                    self.logger.exception("File:{} - ID:{}: Some other error occured".format(count, arxiv_id))
+
+                try:
+                    arxiv_document = self.session.catalog.by_identifier(arxiv=arxiv_id, view='all')
+                except (MendeleyException, MendeleyApiException), e:
+                    pass
+                except Exception, e:
+                    self.logger.exception("File {} - {}: Some other error occured".format(count, arxiv_id))
+
+                if doi_document and not arxiv_document:
+                    self.logger.info("File {} - {}: DOI doc found - No arxiv doc".format(count, arxiv_id))
+                    src['mndly_path'] = 1
+                    self.output_q.put(add_new_entry(src, doi_document))
+
+                elif not doi_document and arxiv_document:
+                    self.logger.info("File {} - {}: No DOI doc - Arxiv doc found".format(count, arxiv_id))
+                    src['mndly_path'] = 2
+                    self.output_q.put(add_new_entry(src, arxiv_document))
+
+                elif not doi_document and not arxiv_document:
+                    self.logger.info("File {} - {}: No DOI doc - No arxiv doc".format(count, arxiv_id))
+                    src['mndly_path'] = 7
+                    self.output_q.put(add_new_entry(src, None))
+
+                else:
+                    if doi_document.id == arxiv_document.id:
+                        self.logger.info("File {} - {}: Found both DOI/Arxiv docs - identical".format(count, arxiv_id))
+                        src['mndly_path'] = 3
+                        self.output_q.put(add_new_entry(src, arxiv_document))
+                    else:
+                        if len(doi_document.identifiers) >= len(arxiv_document.identifiers):
+                            self.logger.info(
+                                "File {} - {}: Found both DOI/Arxiv docs - DOI choosen".format(count, arxiv_id))
+                            src['mndly_path'] = 4
+                            self.output_q.put(add_new_entry(src, doi_document))
+                        else:
+                            self.logger.info(
+                                "File {} - {}: Found both DOI/Arxiv docs - Arxiv chosen".format(count, arxiv_id))
+                            src['mndly_path'] = 5
+                            self.output_q.put(add_new_entry(src, arxiv_document))
+            else:
+                try:
+                    arxiv_document = self.session.catalog.by_identifier(arxiv=arxiv_id, view='all')
+                    if arxiv_document:
+                        self.logger.info("File {} - {}: Arxiv doc found".format(count, arxiv_id))
+                        src['mndly_path'] = 6
+                        self.output_q.put(add_new_entry(src, arxiv_document))
+                except (MendeleyException, MendeleyApiException), e:
+                    self.logger.info("File {} - {}: No arxiv doc found".format(count, arxiv_id))
+                    src['mndly_path'] = 8
+                    self.output_q.put(add_new_entry(src, None))
+                except Exception, e:
+                    self.logger.exception("File {} - {}: Some other error occured".format(count, arxiv_id))
 
 
 def start_mendeley_session(mndly_config):
@@ -27,7 +136,7 @@ def init_temp(src):
     temp = dict()
     temp['arxiv_id'] = src['arxiv_id']
     temp['arxiv_doi'] = src['arxiv_doi']
-    temp['crossref_doi'] = src['crossref_doi']
+    temp['cr_doi'] = src['cr_doi']
     temp['mndly_path'] = src['mndly_path']
     temp['submitted'] = src['submitted']
 
@@ -64,7 +173,7 @@ def init_temp(src):
     return temp
 
 
-def add_new_entry(list_of_dicts, src, mndly_doc):
+def add_new_entry(src, mndly_doc):
     temp = init_temp(src)
 
     # Check with arXiv data
@@ -93,24 +202,14 @@ def add_new_entry(list_of_dicts, src, mndly_doc):
                     arxiv_id = found_regex[0]
 
             if arxiv_id == mndly_arxiv_id:
-                print("\t\tDocuments id's match")
-                print("\t\t " + arxiv_id, " - ", mndly_arxiv_id)
-                print("\t\t " + src['title'], " - ", mndly_doc.title)
                 check = True
             else:
-                print("\t\tId's Mismatch")
-                print("\t\t " + arxiv_id, " - ", mndly_arxiv_id)
-                print("\t\t " + src['title'], " - ", mndly_doc.title)
                 check = False
         else:
             lr = levenshtein_ratio(src['title'], mndly_doc.title)
             if lr <= LR:
-                print("\t\tDocuments titles match - {}".format(lr))
-                print("\t\t " + src['title'], " - ", mndly_doc.title)
                 check = True
             else:
-                print("\t\tTitles Mismatch - {}".format(lr))
-                print("\t\t " + src['title'], " - ", mndly_doc.title)
                 check = False
 
         if check:
@@ -164,18 +263,17 @@ def add_new_entry(list_of_dicts, src, mndly_doc):
         temp['reader_count_by_subdiscipline'] = mndly_doc.reader_count_by_subdiscipline
         temp['reader_count_by_country'] = mndly_doc.reader_count_by_country
         # else:
-        #     if 'arxiv' in mndly_doc.identifiers:
-        #         ret_val = (src['arxiv_id'], mndly_doc.identifiers['arxiv'])
+        # if 'arxiv' in mndly_doc.identifiers:
+        # ret_val = (src['arxiv_id'], mndly_doc.identifiers['arxiv'])
         #     else:
         #         ret_val = (unicode(src['title']).encode('utf-8'), unicode(mndly_doc.title).encode('utf-8'))
         #
         #     temp['mndly_kicked'] = ret_val
 
-    list_of_dicts.append(temp)
-    return
+    return temp
 
 
-def mendeley_altmetrics(stage1_dir=None, stage2_dir=None):
+def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
     ts_start = time.time()
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
@@ -198,107 +296,45 @@ def mendeley_altmetrics(stage1_dir=None, stage2_dir=None):
         stage2_dir = stage1_dir + stage2_dir + "/"
 
     working_folder = stage2_dir + timestamp
-    print(working_folder)
-    os.makedirs(working_folder)
+    if not os.path.exists(working_folder):
+        os.makedirs(working_folder)
+
+    # Create logger
+    config = logging_confdict(working_folder, __name__)
+    logging.config.dictConfig(config)
+    logger = logging.getLogger(__name__)
 
     # Read in stage 2 file
-    input_df = pd.io.json.read_json(stage2_dir + "stage_2.json")
-    input_df = input_df.fillna(value=np.nan)
-    input_df = input_df.replace("", np.nan)
+    input_df = pd.read_json(stage2_dir + "stage_2.json")
+    input_df.sort_index(inplace=True)
+
+    input_q = Queue.Queue()
+    output_q = Queue.Queue()
+
+    for idx, row in input_df.iterrows():
+        input_q.put((idx, row))
+
+    mndly_threads = []
+    for i in range(0, num_threads):
+        thread = MendeleyThread(logger, input_q, output_q, len(input_df.index), session)
+        thread.start()
+        mndly_threads.append(thread)
+
+    for thread in mndly_threads:
+        thread.join()
 
     output_dicts = []
-    max_len = len(input_df.index)
-    for count, (idx, row) in enumerate(input_df.iterrows()):
-        arxiv_document = None
-        doi_document = None
+    while not output_q.empty():
+        output_dicts.append(output_q.get_nowait())
 
-        print("\n=== FILE {} of {} ===".format(count, max_len))
-
-        arxiv_id = row['id']
-        found_regex = new_arxiv_format.findall(arxiv_id)
-        if found_regex:
-            arxiv_id = found_regex[0]
-        else:
-            found_regex = old_arxiv_format.findall(arxiv_id)
-            if found_regex:
-                arxiv_id = found_regex[0]
-        print(arxiv_id)
-
-        if doi_check.match(str(row['doi'])):
-            doi = row['doi']
-        else:
-            if doi_check.match(str(row['crossref_doi'])):
-                doi = row['crossref_doi']
-            else:
-                doi = None
-
-        src = {'arxiv_id': arxiv_id,
-               'arxiv_doi': row['doi'],
-               'crossref_doi': row['crossref_doi'],
-               'title': row['title'],
-               'submitted': row['submitted'],
-               'mndly_path': np.nan}
-
-        if doi:
-            try:
-                doi_document = session.catalog.by_identifier(doi=doi, view='all')
-            except (MendeleyException, MendeleyApiException), e:
-                pass
-            except Exception, e:
-                print("HTTP", str(e))
-
-            try:
-                arxiv_document = session.catalog.by_identifier(arxiv=arxiv_id, view='all')
-            except (MendeleyException, MendeleyApiException), e:
-                pass
-            except Exception, e:
-                print("HTTP", str(e))
-
-            if doi_document and not arxiv_document:
-                print("\t+ doi found, but no arxiv")
-                src['mndly_path'] = 1
-                add_new_entry(output_dicts, src, doi_document)
-
-            elif not doi_document and arxiv_document:
-                print("\t+ arxiv found, but no doi")
-                src['mndly_path'] = 2
-                add_new_entry(output_dicts, src, arxiv_document)
-
-            elif not doi_document and not arxiv_document:
-                print("\t+ None found")
-                src['mndly_path'] = 7
-                add_new_entry(output_dicts, src, None)
-                continue
-
-            else:
-                print("\t+ both found")
-                if doi_document.id == arxiv_document.id:
-                    src['mndly_path'] = 3
-                    add_new_entry(output_dicts, src, arxiv_document)
-                else:
-                    if len(doi_document.identifiers) >= len(arxiv_document.identifiers):
-                        src['mndly_path'] = 4
-                        add_new_entry(output_dicts, src, doi_document)
-                    else:
-                        src['mndly_path'] = 5
-                        add_new_entry(output_dicts, src, arxiv_document)
-        else:
-            try:
-                arxiv_document = session.catalog.by_identifier(arxiv=arxiv_id, view='all')
-                if arxiv_document:
-                    print("\t+ arxiv found - solo")
-                    src['mndly_path'] = 6
-                    add_new_entry(output_dicts, src, arxiv_document)
-            except (MendeleyException, MendeleyApiException), e:
-                print("\t+ nothing found - solo")
-                src['mndly_path'] = 8
-                add_new_entry(output_dicts, src, None)
-                pass
-            except Exception, e:
-                print("HTTP?", str(e))
-
-    output = pd.DataFrame(output_dicts)
-    output.to_json(working_folder + "/stage_3.json")
+    stage_3_raw = pd.DataFrame(output_dicts)
+    try:
+        stage_3_raw.to_json(working_folder + "/stage_3_raw.json")
+        stage_3_raw.to_csv(working_folder + "/stage_3_raw.csv", encoding="utf-8", sep=";")
+    except Exception, e:
+        logger.exception("Could not write all output files")
+    else:
+        logger.info("Wrote stage_3_raw json and csv output files")
 
 
 if __name__ == "__main__":
