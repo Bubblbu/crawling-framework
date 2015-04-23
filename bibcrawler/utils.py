@@ -17,6 +17,12 @@ new_arxiv_format = re.compile(r'(?:ar[X|x]iv:)?(\d{4}\.\d{4,5})(?:v\d+)?$')
 
 
 def levenshtein_ratio(string1, string2):
+    """
+    Calculates levenshtein ratio between two strings
+    :param string1: First string
+    :param string2: Second string
+    :return: Levenshtein Ratio
+    """
     if type(string1) is not unicode:
         string1 = ""
     if type(string2) is not unicode:
@@ -189,6 +195,11 @@ ARXIV_CATS = {'astro-ph': {'name': 'Astrophysics',
 
 
 def get_arxiv_subcats(cats):
+    """
+    List of cats -> List of subcats "cat.subcat"
+    :param cats: List of categories
+    :return: List of categorical abbrevations of all subcategories
+    """
     subcategories = {}
     for cat in cats:
         subcategories[cat] = [cat + "." + subcat for subcat in ARXIV_CATS[cat]['subcats'].keys()]
@@ -197,6 +208,11 @@ def get_arxiv_subcats(cats):
 
 
 def get_subcat_fullname(subcat):
+    """
+    Returns a human readable description of the subcategory
+    :param subcat: Subcategory
+    :return: Full name category - Full name subcategory
+    """
     if "." in subcat:
         parts = subcat.split(".")
         name = ARXIV_CATS[parts[0]]['name']
@@ -207,15 +223,28 @@ def get_subcat_fullname(subcat):
 
 def clean_dataset(df, logger, earliest_date, latest_date,
                   remove_columns):
+    """
+    General function to clean panda dataframes
+
+    :param df: Input dataframe
+    :param logger: Logger
+    :param earliest_date: Earliest possible date
+    :param latest_date: Latest possible date
+    :param remove_columns: List of col-names to be removed
+    :return: Cleaned dataframe
+    """
     # Remove columns
     if remove_columns:
         logger.info("Removing columns")
         for col in remove_columns:
             if col in df:
                 del df[col]
+            else:
+                logger.error("Column \"{}\" not in dataframe".format(col))
 
     # Strip all columns
     logger.info("Stripping all entries")
+
     def clean(a):
         a = a.str.replace(r"\n", " ")
         a = a.str.replace(r"\r", " ")
@@ -224,8 +253,10 @@ def clean_dataset(df, logger, earliest_date, latest_date,
     for col in df.columns:
         df[col] = clean(df[col])
 
+    # Replace None & empty string
+    logger.info("Replacing None & empty string with np.nan")
     df.fillna(nan, inplace=True)
-    df = df.replace("",nan)
+    df = df.replace("", nan)
 
     # Remove duplicate entries based on arxiv id's
     logger.info("Removing duplicate entries")
@@ -235,8 +266,8 @@ def clean_dataset(df, logger, earliest_date, latest_date,
     df_new = df.drop(duplicate_row_indices)
 
     # Change date types to datetime
-    df_new['submitted'] = pd.to_datetime(df_new['submitted'])
-    df_new['updated'] = pd.to_datetime(df_new['updated'])
+    df_new['submitted'] = pd.to_datetime(df_new['submitted'], unit="ms")
+    df_new['updated'] = pd.to_datetime(df_new['updated'], unit="ms")
 
     # Apply date range based on submisssion date if applicable
     logger.info("Applying date ranges")
