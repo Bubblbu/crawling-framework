@@ -169,19 +169,19 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
     return results
 
 
-def doi_lookup(num_processes=1, num_threads=1, input_folder=None, mode='all'):
+def doi_lookup(num_processes=1, num_threads=1, input_folder=None):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
     To-Do: DataCite
 
+    Stage 1 dataset is split into equally sized subframes. Each is given to a subprocess that accesses the
+    crossref API with multiple threads.
     Possible candidate documents are matched with original arxiv-documents using Levenshtein Ratio (Schloegl et al)
-
+    
+    :param num_processes: Number of processes to split the initial stage_1_dataset
+    :param num_threads: Number of threads each process uses to access crossref API
     :param input_folder: The folder containing the stage 1 data. If not given, the most recent folder will be used to work
-    :type input_folder: str
-    :param mode: The DOI Registration Agencies to be crawled
-    :type mode: str
-
     :returns: pd.DataFrame - newly found DOIs with original indices
     """
     ts_start = time.time()
@@ -280,7 +280,7 @@ def doi_cleanup(working_folder, earliest_date=None, latest_date=None,
     :type remove_columns: list of str
     :param earliest_date: Articles before this date are removed
     :type earliest_date: datetime
-    :param latest_date: Artivles after this date are removed
+    :param latest_date: Articles after this date are removed
     :type latest_date: datetime
 
     :return: None
