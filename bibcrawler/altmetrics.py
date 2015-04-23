@@ -23,6 +23,10 @@ from mendeley.exception import MendeleyException, MendeleyApiException
 
 
 class MendeleyThread(threading.Thread):
+    """
+    Mendeley Thread.
+    Takes single rows from stage_2 as input and returns stage_3 rows as dicts.
+    """
     def __init__(self, logger, input_q, output_q, max_len, session):
         threading.Thread.__init__(self)
         self.logger = logger
@@ -127,12 +131,20 @@ class MendeleyThread(threading.Thread):
 
 
 def start_mendeley_session(mndly_config):
+    """
+    Creates a new Mendeley session
+    :param mndly_config: Contains information 'client_id', 'secret'
+    :return: session
+    """
     mendeley = Mendeley(mndly_config['client_id'], mndly_config['secret'])
     auth = mendeley.start_client_credentials_flow()
     return auth.authenticate()
 
 
 def init_temp(src):
+    """
+    Initialise output document
+    """
     temp = dict()
     temp['arxiv_id'] = src['arxiv_id']
     temp['arxiv_doi'] = src['arxiv_doi']
@@ -174,6 +186,16 @@ def init_temp(src):
 
 
 def add_new_entry(src, mndly_doc):
+    """
+    Creates the entry for the stage_3 output from src document and corresponding mendeley document
+
+    :param src: The stage_2 source document.
+                Used keys are 'arxiv_id','arxiv_doi':,'cr_doi','title','submitted','mndly_path'
+    :type src: dict
+    :param mndly_doc: The found mendeley document
+    :type mndly_doc: CatalogDocument <mendeley.models.catalog.CatalogDocument>
+    :return: Merged document. :class: dict
+    """
     temp = init_temp(src)
 
     # Check with arXiv data
@@ -265,7 +287,7 @@ def add_new_entry(src, mndly_doc):
         # else:
         # if 'arxiv' in mndly_doc.identifiers:
         # ret_val = (src['arxiv_id'], mndly_doc.identifiers['arxiv'])
-        #     else:
+        # else:
         #         ret_val = (unicode(src['title']).encode('utf-8'), unicode(mndly_doc.title).encode('utf-8'))
         #
         #     temp['mndly_kicked'] = ret_val
@@ -274,6 +296,19 @@ def add_new_entry(src, mndly_doc):
 
 
 def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
+    """
+    Retrieve mendeley documents based on arxiv id and dois.
+    If both arxiv and doi yield different mendeley documents the one with more identifiers is preferred.
+
+    :param stage1_dir: The name of the Stage 1 folder to use. If None last created will be used
+    :type stage1_dir: str
+    :param stage2_dir: The name of the Stage 2 folder to use. If None last created will be used
+    :type stage2_dir: str
+    :param num_threads: Number of threads to use
+    :type num_threads: int
+    :return: working_folder as absolute path
+    """
+
     ts_start = time.time()
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
@@ -335,6 +370,8 @@ def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
         logger.exception("Could not write all output files")
     else:
         logger.info("Wrote stage_3_raw json and csv output files")
+
+    return working_folder
 
 
 if __name__ == "__main__":
