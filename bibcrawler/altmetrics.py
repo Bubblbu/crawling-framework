@@ -301,11 +301,8 @@ def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
     If both arxiv and doi yield different mendeley documents the one with more identifiers is preferred.
 
     :param stage1_dir: The name of the Stage 1 folder to use. If None last created will be used
-    :type stage1_dir: str
     :param stage2_dir: The name of the Stage 2 folder to use. If None last created will be used
-    :type stage2_dir: str
     :param num_threads: Number of threads to use
-    :type num_threads: int
     :return: working_folder as absolute path
     """
 
