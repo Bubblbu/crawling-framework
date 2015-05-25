@@ -1,5 +1,0 @@
-rpy2==2.5.6
-singledispatch==3.4.0.3
-wheel==0.24.0
-pandas==0.15.2
-python-Levenshtein==0.12.0
