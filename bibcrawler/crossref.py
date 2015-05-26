@@ -6,13 +6,14 @@ from __future__ import print_function, division
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
 import rpy2.robjects.numpy2ri
-
 rpy2.robjects.numpy2ri.activate()
 import pandas.rpy.common as com
 import gc
 
-import os, sys
-import time, datetime
+import os
+import sys
+import time
+import datetime
 import threading
 import multiprocessing as mp
 import Queue
@@ -24,10 +25,12 @@ import logging
 import logging.config
 from logging_dict import logging_confdict
 
-from config import base_directory
-from utils import *
+import configparser
+Config = configparser.ConfigParser()
+Config.read('../config.ini')
+base_directory = Config.get('directories', 'base')
 
-__author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
+from utils import *
 
 
 class ProcessingThread(threading.Thread):

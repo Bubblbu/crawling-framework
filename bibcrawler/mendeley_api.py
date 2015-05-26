@@ -11,12 +11,17 @@ import Queue
 
 import numpy as np
 
-from config import base_directory, mndly_config
-from utils import *
-
 import logging
 import logging.config
 from logging_dict import logging_confdict
+
+import configparser
+Config = configparser.ConfigParser()
+Config.read('../config.ini')
+Config.read("../config.ini")
+base_directory = Config.get('directories', 'base')
+
+from utils import *
 
 from mendeley import Mendeley
 from mendeley.exception import MendeleyException, MendeleyApiException
@@ -310,7 +315,7 @@ def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Start mendeley session
-    session = start_mendeley_session(mndly_config)
+    session = start_mendeley_session(Config._sections['mndly_auth'])
 
     # Create folder structure
     if not stage1_dir:
