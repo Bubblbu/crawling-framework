@@ -6,3 +6,6 @@ stage2 =
 [mndly_auth]
 client_id =
 secret =
+
+[ads_auth]
+api_key =
