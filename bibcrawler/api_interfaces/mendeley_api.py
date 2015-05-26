@@ -10,6 +10,7 @@ import threading
 import Queue
 
 import numpy as np
+import pandas as pd
 
 import logging
 import logging.config
@@ -17,11 +18,10 @@ from logging_dict import logging_confdict
 
 import configparser
 Config = configparser.ConfigParser()
-Config.read('../config.ini')
-Config.read("../config.ini")
+Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
-from utils import regex_old_arxiv, regex_new_arxiv, regex_doi
+from utils import regex_old_arxiv, regex_new_arxiv, regex_doi, levenshtein_ratio, LR
 
 from mendeley import Mendeley
 from mendeley.exception import MendeleyException, MendeleyApiException
@@ -367,7 +367,7 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
     stage_3_raw = pd.DataFrame(output_dicts)
     try:
         stage_3_raw.to_json(working_folder + "/stage_3_raw.json")
-        stage_3_raw.to_csv(working_folder + "/stage_3_raw.csv", encoding="utf-8", sep=";")
+        stage_3_raw.to_csv(working_folder + "/stage_3_raw.csv", encoding="utf-8", sep=";", index=False)
     except Exception, e:
         logger.exception("Could not write all output files")
     else:

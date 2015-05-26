@@ -23,7 +23,7 @@ from logging_dict import logging_confdict
 
 import configparser
 Config = configparser.ConfigParser()
-Config.read('../config.ini')
+Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
 from utils import get_subcat_fullname, clean_dataset
@@ -69,7 +69,7 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
     # Load R-scripts
     arxiv_logger.debug("Loading R-Scripts ...")
     try:
-        with open('r_scripts/arxiv.R', 'r') as f:
+        with open('../r_scripts/arxiv.R', 'r') as f:
             string = ''.join(f.readlines())
         arxiv_crawler = SignatureTranslatedAnonymousPackage(string, "arxiv_crawler")
     except Exception, e:
@@ -207,7 +207,7 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
 
     ts_finish = time.time()
 
-    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv", sep=";")
+    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv", sep=";", index=False)
 
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
@@ -271,7 +271,7 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
 
     try:
         stage_1.to_json(working_folder + "/stage_1.json")
-        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";")
+        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";", index=False)
     except Exception, e:
         arxiv_logger.exception("Could not write all output files")
     else:

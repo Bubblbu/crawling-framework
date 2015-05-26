@@ -29,7 +29,7 @@ from logging_dict import logging_confdict
 
 import configparser
 Config = configparser.ConfigParser()
-Config.read('../config.ini')
+Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
 from utils import levenshtein_ratio, LR, clean_dataset
@@ -133,7 +133,7 @@ class CrossrefAPIThread(threading.Thread):
 def crossref_lookup(working_folder, index, authors, titles, submitted, num_threads=1):
     # Load r-scripts
     print("\nLoading R-Scripts ...")
-    with open('r_scripts/doi_lookup.R', 'r') as f:
+    with open('../r_scripts/doi_lookup.R', 'r') as f:
         string = ''.join(f.readlines())
     doi_lookuper = SignatureTranslatedAnonymousPackage(string, "doi_lookuper")
 
@@ -265,7 +265,7 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
 
     try:
         stage_2_raw.to_json(working_folder + "/stage_2_raw.json")
-        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8", sep=";")
+        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8", sep=";", index=False)
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
@@ -337,7 +337,7 @@ def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
 
     try:
         stage_2.to_json(working_folder + "/stage_2.json")
-        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8", sep=";")
+        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8", sep=";", index=False)
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
