@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 from __future__ import print_function, division
 import re
 import pandas as pd
@@ -7,13 +10,17 @@ from Levenshtein import distance
 #: Levenshtein Ratio - Schloegl et al, 2014
 LR = 1 / 15.83
 
-# Regex for 'only alpha-numeric'
+#: Regex for 'only alpha-numeric'
 regex_alphanum = re.compile(r"[^a-zA-Z0-9]")
+#: Regex for more than 2 whitespaces
 regex_mult_whitespace = re.compile(r"\s{2,}")
 
-doi_check = re.compile(r'\b(10[.][0-9]{4,}(?:[.][0-9]+)*/(?:(?!["&\'<>])\S)+)\b')
-old_arxiv_format = re.compile(r'(?:ar[X|x]iv:)?([^\/]+\/\d+)(?:v\d+)?$')
-new_arxiv_format = re.compile(r'(?:ar[X|x]iv:)?(\d{4}\.\d{4,5})(?:v\d+)?$')
+#: DOI Regex
+regex_doi = re.compile(r'\b(10[.][0-9]{4,}(?:[.][0-9]+)*/(?:(?!["&\'<>])\S)+)\b')
+#: Old Arxiv Regex
+regex_old_arxiv = re.compile(r'(?:ar[X|x]iv:)?([^\/]+\/\d+)(?:v\d+)?$')
+#: New Arxiv Regex
+regex_new_arxiv = re.compile(r'(?:ar[X|x]iv:)?(\d{4}\.\d{4,5})(?:v\d+)?$')
 
 
 def levenshtein_ratio(string1, string2):
