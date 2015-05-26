@@ -1,8 +1,8 @@
-__author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
-
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 def logging_confdict(working_dir, name):
-    LOGGING = {
+    logging_dict = {
         'version': 1,
         'disable_existing_loggers': False,
         'formatters': {
@@ -35,4 +35,4 @@ def logging_confdict(working_dir, name):
         }
     }
 
-    return LOGGING
+    return logging_dict
