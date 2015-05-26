@@ -253,8 +253,11 @@ def clean_dataset(df, logger, earliest_date, latest_date,
     logger.info("Stripping all entries")
 
     def clean(a):
-        a = a.str.replace(r"\n", " ")
-        a = a.str.replace(r"\r", " ")
+        try:
+            a = a.str.replace(r"\n", " ")
+            a = a.str.replace(r"\r", " ")
+        except AttributeError:
+            pass
         return a
 
     for col in df.columns:
