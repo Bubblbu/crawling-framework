@@ -21,7 +21,7 @@ Config.read('../config.ini')
 Config.read("../config.ini")
 base_directory = Config.get('directories', 'base')
 
-from utils import *
+from utils import regex_old_arxiv, regex_new_arxiv, regex_doi
 
 from mendeley import Mendeley
 from mendeley.exception import MendeleyException, MendeleyApiException
@@ -49,18 +49,18 @@ class MendeleyThread(threading.Thread):
             doi_document = None
 
             arxiv_id = row['id']
-            found_regex = new_arxiv_format.findall(arxiv_id)
+            found_regex = regex_new_arxiv.findall(arxiv_id)
             if found_regex:
                 arxiv_id = found_regex[0]
             else:
-                found_regex = old_arxiv_format.findall(arxiv_id)
+                found_regex = regex_old_arxiv.findall(arxiv_id)
                 if found_regex:
                     arxiv_id = found_regex[0]
 
-            if doi_check.match(str(row['doi'])):
+            if regex_doi.match(str(row['doi'])):
                 doi = row['doi']
             else:
-                if doi_check.match(str(row['cr_doi'])):
+                if regex_doi.match(str(row['cr_doi'])):
                     doi = row['cr_doi']
                 else:
                     doi = None
@@ -212,19 +212,19 @@ def add_new_entry(src, mndly_doc):
             mndly_arxiv_id = mndly_doc.identifiers['arxiv']
 
             # TODO - remove the version number
-            found_regex = new_arxiv_format.findall(mndly_doc.identifiers['arxiv'])
+            found_regex = regex_new_arxiv.findall(mndly_doc.identifiers['arxiv'])
             if found_regex:
                 mndly_arxiv_id = found_regex[0]
             else:
-                found_regex = old_arxiv_format.findall(mndly_doc.identifiers['arxiv'])
+                found_regex = regex_old_arxiv.findall(mndly_doc.identifiers['arxiv'])
                 if found_regex:
                     mndly_arxiv_id = found_regex[0]
 
-            found_regex = new_arxiv_format.findall(src['arxiv_id'])
+            found_regex = regex_new_arxiv.findall(src['arxiv_id'])
             if found_regex:
                 arxiv_id = found_regex[0]
             else:
-                found_regex = old_arxiv_format.findall(mndly_doc.identifiers['arxiv'])
+                found_regex = regex_old_arxiv.findall(mndly_doc.identifiers['arxiv'])
                 if found_regex:
                     arxiv_id = found_regex[0]
 
@@ -300,7 +300,7 @@ def add_new_entry(src, mndly_doc):
     return temp
 
 
-def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
+def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
     """
     Retrieve mendeley documents based on arxiv id and dois.
     If both arxiv and doi yield different mendeley documents the one with more identifiers is preferred.
@@ -374,8 +374,3 @@ def mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=1):
         logger.info("Wrote stage_3_raw json and csv output files")
 
     return working_folder
-
-
-if __name__ == "__main__":
-    mendeley_altmetrics()
-

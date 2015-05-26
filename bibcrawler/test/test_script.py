@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 """
 .. module:: Test script for crawling framework
    :platform: Windows
@@ -7,11 +10,11 @@
 """
 
 from __future__ import print_function, division
-from arxiv import *
-from doi_lookup import *
-from altmetrics import *
+from api_interfaces.arxiv import arxiv_crawl, arxiv_cleanup
+from api_interfaces.crossref import crossref_crawl, crossref_cleanup
+from api_interfaces.mendeley_api import mendeley_crawl
 
-__author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
+from utils import get_arxiv_subcats
 
 if __name__ == '__main__':
     # Category to crawl - nlin is quite big (not as big as others... but still big...)
@@ -21,7 +24,7 @@ if __name__ == '__main__':
     # crawling_list = {"cs": ["cs.GR"]}
 
     # === STAGE 1 ===
-    folder = r_arxiv_crawler(crawling_list, batchsize=400, delay=1)
+    folder = arxiv_crawl(crawling_list, batchsize=400, delay=1)
     # Only use if the merging of the temporary files leads to OutOfMemory...
     # TODO Deal with OutOfMemory during concatenation
     # folder = test_merge(1, "2015-04-20_18-28-05")
@@ -30,8 +33,8 @@ if __name__ == '__main__':
 
     # === STAGE 2 ===
     # Maybe even more proccesses are ok... Havent benchmarked all the parallel stuff yet
-    folder = doi_lookup(input_folder=None, num_processes=4, num_threads=10)
-    doi_cleanup(folder)
+    folder = crossref_crawl(input_folder=None, num_processes=4, num_threads=10)
+    crossref_cleanup(folder)
 
     # === STAGE 3 ===
-    mendeley_altmetrics(stage1_dir=None, stage2_dir=None, num_threads=10)
+    mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=10)

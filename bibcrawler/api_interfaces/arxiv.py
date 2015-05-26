@@ -2,29 +2,34 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, division
-
 import os
 import sys
+
 import gc
+
 import time
 import datetime
+
 import numpy as np
 import pandas as pd
-import logging
-import logging.config
-from logging_dict import logging_confdict
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
 import pandas.rpy.common as com
 
-from config import base_directory
-from utils import *
+import logging
+import logging.config
+from logging_dict import logging_confdict
 
-__author__ = 'Asura Enkhbayar <asura.enkhbayar@gmail.com>'
+import configparser
+Config = configparser.ConfigParser()
+Config.read('../config.ini')
+base_directory = Config.get('directories', 'base')
+
+from utils import get_subcat_fullname, clean_dataset
 
 
-def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
+def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
     """
     This is a python wrapper for the aRxiv "arxiv_search" function.
 
@@ -229,11 +234,8 @@ def r_arxiv_crawler(crawling_list, limit=None, batchsize=100, submission_range=N
     return working_folder
 
 
-default_remove = [u'abstract', u'affiliations', u'link_abstract', u'link_doi', u'link_pdf', u'comment']
-
-
 def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
-                  remove_columns=default_remove):
+                  remove_columns=None):
     """
     Cleans the crawl results from arxiv.
 
@@ -253,6 +255,9 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     config = logging_confdict(working_folder, __name__ + "_cleanup")
     logging.config.dictConfig(config)
     arxiv_logger = logging.getLogger(__name__ + "_cleanup")
+
+    if not remove_columns:
+        remove_columns = [u'abstract', u'affiliations', u'link_abstract', u'link_doi', u'link_pdf', u'comment']
 
     # Read in stage_1 raw file
     try:

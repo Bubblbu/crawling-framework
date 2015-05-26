@@ -3,13 +3,6 @@
 
 from __future__ import print_function, division
 
-from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
-import rpy2.robjects as R
-import rpy2.robjects.numpy2ri
-rpy2.robjects.numpy2ri.activate()
-import pandas.rpy.common as com
-import gc
-
 import os
 import sys
 import time
@@ -19,6 +12,15 @@ import multiprocessing as mp
 import Queue
 
 import numpy as np
+import pandas as pd
+
+from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
+import rpy2.robjects as rpy2_objects
+import rpy2.robjects.numpy2ri
+rpy2.robjects.numpy2ri.activate()
+import pandas.rpy.common as com
+
+import gc
 import csv
 
 import logging
@@ -30,7 +32,7 @@ Config = configparser.ConfigParser()
 Config.read('../config.ini')
 base_directory = Config.get('directories', 'base')
 
-from utils import *
+from utils import levenshtein_ratio, LR, clean_dataset
 
 
 class ProcessingThread(threading.Thread):
@@ -119,7 +121,7 @@ class CrossrefAPIThread(threading.Thread):
                                        'cr_doi': cr_doi.strip()})
 
                 # Garbage collection
-                R.r('gc()')
+                rpy2_objects.r('gc()')
                 gc.collect()
 
                 self.q.task_done()
@@ -172,7 +174,7 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
     return results
 
 
-def doi_lookup(num_processes=1, num_threads=1, input_folder=None):
+def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -272,7 +274,7 @@ def doi_lookup(num_processes=1, num_threads=1, input_folder=None):
     return working_folder
 
 
-def doi_cleanup(working_folder, earliest_date=None, latest_date=None,
+def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
                 remove_columns=None):
     """
     Cleans the crawl results from crossref.
