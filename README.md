@@ -2,29 +2,32 @@
 
 A python framework to crawl various bibliometric sources.
 
-## Overview
+## Overview of all implemented interfaces
 
-1. **Source** - Inital data acquisition
+* **arXiv** - Inital data acquisition
 
- The initial dataset is acquired at this point. Currently arxiv-subcategories can be crawled.
- 
- Currently implemented: *arxiv.com*
-	
-2. **Enrichment** - Additional Identifiers
+  | Parameter | Description |
+  | -------   | ------------- |
+  | Input     | List of arxiv categories  |
+  | Output    | DataFrame containing following variables: *arxiv_id, doi, title, authors, categories, primary_category, crawl_cat, journal_ref, submitted, updated*|
 
-  Using APIs offered by DOI Registration Agencies metadata from the source (authors, titles, year) additional metadata is crawled. (DOIs)
-  
-  Currently implemented: *crossref.org*
-	
-3. **Output** - Altmetric/Science2.0 stuff
+* **CrossRef** - Additional Identifiers
 
-  Mendeley, Altmetric.com, ADS Harvard ...
+  | Parameter | Description |
+  | -------   | ------------- |
+  | Input     | DataFrame containing *title, authors, date* |
+  | Output    | Input dataframe extended with *cr_doi, cr_title, lr* (levensthein_ratio) |
 
-  Currently implemented: *mendeley.com*
+* **Mendeley** - Altmetric/Science2.0 stuff
 
+  | Parameter | Description |
+  | -------   | ------------- |
+  | Input     | DataFrame containing some identifiers (e.g.: *arxiv_id, arxiv_doi, cr_doi*)  |
+  | Output    | DataFrame with bibliometric metadata, abstract, mendeley identifiers, mendeley readership data |
 
+## Troubleshooting
 
-## R/rpy2 - Setup
+### R/rpy2 - Setup
 
 In order to run the arxiv-crawler both R and rpy2 will need to be installed and setup correctly.
 In case rpy2 fails to find the package "aRxiv", the following steps should help:
