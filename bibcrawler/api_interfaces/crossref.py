@@ -193,7 +193,6 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Create folder structure
-    global base_folder
     if not input_folder:
         all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
