@@ -3,10 +3,10 @@
 
 from __future__ import print_function, division
 
-import os
 import sys
 import time
 import datetime
+from path import Path
 
 import requests
 
@@ -77,8 +77,8 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
 
     # Create folder structure
     if not input_folder:
-        all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
-        latest_subdir = max(all_subdirs, key=os.path.getmtime)
+        all_subdirs = [base_directory + d for d in Path(base_directory).listdir() if Path(base_directory + d).isdir()]
+        latest_subdir = max(all_subdirs, key=Path.getmtime)
         base_folder = latest_subdir + "/"
     else:
         # base_folder = base_directory + input_folder
@@ -87,7 +87,7 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
             base_folder += "/"
 
     working_folder = base_folder + timestamp
-    os.mkdir(working_folder)
+    Path(working_folder).mkdir()
 
     # Setup logging
     config = logging_confdict(working_folder, __name__)
