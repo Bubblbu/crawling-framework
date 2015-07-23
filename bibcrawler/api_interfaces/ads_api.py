@@ -4,8 +4,7 @@
 from __future__ import print_function, division
 
 import sys
-import time
-import datetime
+import arrow
 from path import Path
 
 import requests
@@ -41,35 +40,106 @@ class ADSThread(threading.Thread):
 
     def run(self):
         while not self.input_q.empty():
-            count, arxiv_id = self.input_q.get_nowait()
-            payload = {'q': 'arxiv:{}'.format(arxiv_id), 'sort': 'read_count desc',
-                       'fl': 'reader,title,abstract,year,author,pub,read_count,citation_count,identifier'}
+            count, payload = self.input_q.get_nowait()
             r = requests.get(adsws_url, params=payload, headers=headers)
             self.logger.info("Request {} - Status: {}".format(count, r.status_code))
-            temp = r.json()['response']['docs'][0]
-            temp['url'] = "http://arxiv.org/abs/" + arxiv_id
-            try:
-                temp['authors'] = ";".join(temp['author'])
-                del temp['author']
-            except KeyError:
-                temp['authors'] = []
-
-            if 'reader' not in temp:
-                temp['reader'] = []
-
-            temp['readers'] = int(temp['read_count'])
-            temp['reader_ids'] = u";".join(temp['reader'])
-            temp['title'] = temp['title'][0]
-
-            del temp['read_count']
-            del temp['reader']
+            temp = r.json()['response']['docs']
             self.output_q.put(temp)
 
 
-def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
+def ads_crawl_category(list_of_cats, number_of_docs=100, num_threads=1):
     """
 
+    :param list_of_cats: <list> - Categories to crawl
+    :param number_of_docs: <int> - Number of docs to crawl.
+    :param num_threads: <int> - Number of ADS-Crawl threads to start
+    :return: <str> - Working folder
+    """
+
+    timestamp = arrow.utcnow().to('Europe/Vienna').format('%Y-%m-%d_%H-%M-%S')
+
+    base_folder = base_directory
+
+    working_folder = base_folder + timestamp
+    Path(working_folder).mkdir()
+
+    # Setup logging
+    config = logging_confdict(working_folder, __name__)
+    logging.config.dictConfig(config)
+    ads_logger = logging.getLogger(__name__)
+
+    ads_logger.info("\nCreated new folder: <<" + working_folder + ">>")
+
+    input_queue = Queue.Queue()
+    output_queue = Queue.Queue()
+
+    for count, cat in enumerate(list_of_cats):
+        payload = {'q': 'arxiv_class:"{}"'.format(cat), 'sort': 'read_count desc',
+                   'fl': 'reader,title,abstract,'
+                         'year,author,pub,read_count,'
+                         'citation_count,identifier,arxiv_class,'
+                         'primary_arxiv_class,arxiv_primary_class,'
+                         'primary_class',
+                   'rows': number_of_docs}
+
+        input_queue.put((count, payload))
+
+    threads = []
+    for i in range(num_threads):
+        thread = ADSThread(input_queue, output_queue, ads_logger)
+        thread.start()
+        threads.append(thread)
+
+    ads_logger.debug("THREADING STARTED - PLEASE BE PATIENT")
+
+    for thread in threads:
+        thread.join()
+
+    rows = []
+    while not output_queue.empty():
+        temp = output_queue.get_nowait()
+        for doc in temp:
+            # doc['url'] = "http://arxiv.org/abs/" + cat
+            try:
+                doc['authors'] = ";".join(doc['author'])
+                del doc['author']
+            except KeyError:
+                doc['authors'] = []
+    
+            if 'reader' not in doc:
+                doc['reader'] = []
+    
+            doc['readers'] = int(doc['read_count'])
+            doc['reader_ids'] = u";".join(doc['reader'])
+            doc['title'] = doc['title'][0]
+    
+            del doc['read_count']
+            del doc['reader']
+            rows.append(doc)
+
+    # Convert to pandas dataframe
+    df = pd.DataFrame(rows)
+
+    # Rename columns
+    df.rename(columns={'pub': 'published_in', 'abstract': 'paper_abstract'}, inplace=True)
+    df.index.name = "id"
+
+    # Output
+    # ads_logger.debug("SAVING FILE")
+    # df.to_csv(working_folder + "/ads_data.csv", sep=";", encoding='utf8', index=False)
+    # df.to_json(working_folder + "/ads_data.json")
+
+    return working_folder
+
+
+def ads_crawl_dataset(input_folder=None, number_of_docs=1, num_threads=1):
+    """
+    Uses an existing dataframe containing arxiv_id's to crawl corresponding ADS data.
+    Always uses the top *number_of_docs* documents for the search.
+
     :param input_folder: Input folder
+    :param number_of_docs: Number of documents to use
+    :param num_threads: Number of threads
     :return: Newly created working folder
     """
     ts_start = time.time()
@@ -77,7 +147,7 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
 
     # Create folder structure
     if not input_folder:
-        all_subdirs = [base_directory + d for d in Path(base_directory).listdir() if Path(base_directory + d).isdir()]
+        all_subdirs = [d for d in Path(base_directory).listdir() if d.isdir()]
         latest_subdir = max(all_subdirs, key=Path.getmtime)
         base_folder = latest_subdir + "/"
     else:
@@ -100,9 +170,9 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
     ads_logger.debug("\nReading in stage_1.json ... (Might take a few seconds)")
     try:
         df = pd.read_json(base_folder + "/stage_3_raw.json")
-    except:
-        ads_logger.exception("Problem occured while reading ")
-        sys.exit("Could not read stage_1 file")
+    except IOError:
+        ads_logger.exception("stage_3_raw.json does not exist")
+        sys.exit()
 
     df.sort(columns="reader_count", ascending=False, inplace=True)
     df.index = range(0, len(df.index))
@@ -121,7 +191,10 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
             if found_regex:
                 arxiv_id = found_regex[0]
 
-        input_queue.put((count, arxiv_id))
+        payload = {'q': 'arxiv:{}'.format(arxiv_id), 'sort': 'read_count desc',
+                   'fl': 'reader,title,abstract,year,author,pub,read_count,citation_count,identifier'}
+
+        input_queue.put((count, payload))
 
     threads = []
     for i in range(num_threads):
@@ -134,7 +207,24 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
 
     rows = []
     while not output_queue.empty():
-        rows.append(output_queue.get_nowait())
+        temp = output_queue.get_nowait()[0]
+        temp['url'] = "http://arxiv.org/abs/" + "none_currently"
+        try:
+            temp['authors'] = ";".join(temp['author'])
+            del temp['author']
+        except KeyError:
+            temp['authors'] = []
+
+        if 'reader' not in temp:
+            temp['reader'] = []
+
+        temp['readers'] = int(temp['read_count'])
+        temp['reader_ids'] = u";".join(temp['reader'])
+        temp['title'] = temp['title'][0]
+
+        del temp['read_count']
+        del temp['reader']
+        rows.append(temp)
 
     # Convert to pandas dataframe
     df = pd.DataFrame(rows)
@@ -148,3 +238,7 @@ def ads_crawl(input_folder=None, number_of_docs=100, num_threads=1):
     df.to_json(working_folder + "/ads_data.json")
 
     return working_folder
+
+
+if __name__ == "__main__":
+    ads_crawl_dataset(input_folder=r"E:\Work\Know-Center\CrawlingFramework\files\cs_dl\2015-04-28_18-26-06\2015-04-28_18-30-33")
