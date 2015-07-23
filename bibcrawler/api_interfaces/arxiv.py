@@ -108,7 +108,7 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
                 if count == len(start_range) - 1:
                     break
                 arxiv_logger.info(
-                    "{}: Batch {} out of {} - start:{}|bs:{}".format(subcategory, count + 1, len(start_range) - 1,
+                    "{}: Batch {:<2} out of {} - start:{:<5} | batchsize:{}".format(subcategory, count + 1, len(start_range) - 1,
                                                                      start,
                                                                      start_range[count + 1] - start_range[count]))
                 try_count = 0
@@ -278,11 +278,21 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
         arxiv_logger.info("Wrote json and csv output files")
 
 
-def test_merge(temp_count, timestamp):
+def test_merge(timestamp):
+    """
+    Call manually if automatic merging of json files fails.
+
+    :param timestamp: The timestamp of the crawl process that failed to merge the temporary json
+    :return: <str> - Working folder
+    """
+
     working_folder = base_directory + timestamp
     config = logging_confdict(working_folder, __name__)
     logging.config.dictConfig(config)
     arxiv_logger = logging.getLogger(__name__)
+
+    from path import Path
+    temp_count = len(list(Path(working_folder + "/temp_files/").files("*.json")))
 
     temp_dfs = []
     try:
