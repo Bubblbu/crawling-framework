@@ -21,6 +21,8 @@ import logging
 import logging.config
 from logging_dict import logging_confdict
 
+import json
+
 import configparser
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
@@ -212,12 +214,15 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
     # Merge all temporary files
-    temp_dfs = []
     try:
+        temp_json = {}
         for i in range(0, temp_count):
             arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
-            temp_dfs.append(pd.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
-        result_df = pd.concat(temp_dfs)
+            with open(working_folder + "/temp_files/temp_{}.json".format(i)) as data_file:
+                temp = json.load(data_file)
+            temp_json = {key: value for (key, value) in (temp_json.items() + temp.items())}
+
+        result_df = pd.DataFrame.from_dict(temp_json)
 
         result_df.index = range(0, len(result_df.index))
         result_df = result_df.fillna(np.nan)
@@ -294,12 +299,16 @@ def test_merge(timestamp):
     from path import Path
     temp_count = len(list(Path(working_folder + "/temp_files/").files("*.json")))
 
-    temp_dfs = []
     try:
+        temp_json = {}
+
         for i in range(0, temp_count):
             arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
-            temp_dfs.append(pd.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
-        result_df = pd.concat(temp_dfs)
+            with open(working_folder + "/temp_files/temp_{}.json".format(i)) as data_file:
+                temp = json.load(data_file)
+            temp_json = {key: value for (key, value) in (temp_json.items() + temp.items())}
+
+        result_df = pd.DataFrame.from_dict(temp_json)
 
         result_df.index = range(0, len(result_df.index))
         result_df = result_df.fillna(np.nan)
