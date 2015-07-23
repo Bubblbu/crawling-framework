@@ -25,6 +25,12 @@ A python framework to crawl various bibliometric sources.
   | Input     | DataFrame containing some identifiers (e.g.: *arxiv_id, arxiv_doi, cr_doi*)  |
   | Output    | DataFrame with bibliometric metadata, abstract, mendeley identifiers, mendeley readership data |
 
+## Useful resources
+
++ ADS
+  + ADS Blog and Help page: http://adsabs.github.io/help/
+  + Official github for ADS Dev API: https://github.com/adsabs/adsabs-dev-api
+
 ## Troubleshooting
 
 ### R/rpy2 - Setup
