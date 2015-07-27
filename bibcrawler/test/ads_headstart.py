@@ -11,11 +11,11 @@
 
 from __future__ import print_function, division
 from api_interfaces.arxiv import arxiv_crawl, arxiv_cleanup
-from api_interfaces.ads_api import ads_crawl
+from api_interfaces.ads_api import ads_crawl_dataset, ads_crawl_category
 
 from processing.headstart import create_headstart_files
 
-from utils import get_arxiv_subcats
+from utils import get_arxiv_subcats, get_subcat_fullname
 
 
 if __name__ == "__main__":
@@ -27,9 +27,17 @@ if __name__ == "__main__":
     # # === STAGE 1 ===
     # folder = arxiv_crawl(crawling_list, batchsize=400, delay=None)
     # arxiv_cleanup(folder)
-    folder = "E:/Work/Know-Center/CrawlingFramework/files/cs_dl/2015-04-28_18-26-06/2015-04-28_18-30-33"
-    new_folder = ads_crawl(folder, 100, 10)
+    cats = get_arxiv_subcats(['q-fin', 'stat', 'nlin', 'physics'])
+    full_names = []
+    for cat in cats.values():
+        full_names.append([get_subcat_fullname(subcat) for subcat in cat])
+    # full_names.extend([[get_subcat_fullname(subcat) for subcat in ['hep-ex', 'hep-lat', 'hep-ph', 'hep-th']]])
 
-    create_headstart_files(new_folder)
+    for cat_names in full_names:
+        print("CRAWLING {} CATS".format(len(cat_names)))
+        print(cat_names)
+        new_folder = ads_crawl_category(cat_names, 500, 10)
+
+        # create_headstart_files(new_folder)
 
 
