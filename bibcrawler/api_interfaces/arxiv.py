@@ -24,6 +24,7 @@ from logging_dict import logging_confdict
 import json
 
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
@@ -89,7 +90,8 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
     init_batchsize = batchsize
     for cat, subcats in crawling_list.iteritems():
         arxiv_logger.info("Crawling " + cat)
-        for subcategory in subcats:
+        subcat_len = len(subcats)
+        for subcat_count, subcategory in enumerate(subcats):
             arxiv_logger.debug(subcategory)
             crawl_start = time.time()
             cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
@@ -110,9 +112,12 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
                 if count == len(start_range) - 1:
                     break
                 arxiv_logger.info(
-                    "{}: Batch {:<2} out of {} - start:{:<5} | batchsize:{}".format(subcategory, count + 1, len(start_range) - 1,
-                                                                     start,
-                                                                     start_range[count + 1] - start_range[count]))
+                    "{}/{} {}: Batch {:<2} out of {} - start:{:<5} | batchsize:{}".format(subcat_count, subcat_len,
+                                                                                          subcategory, count + 1,
+                                                                                          len(start_range) - 1,
+                                                                                          start,
+                                                                                          start_range[count + 1] -
+                                                                                          start_range[count]))
                 try_count = 0
                 while True:
                     try:
@@ -297,6 +302,7 @@ def test_merge(timestamp):
     arxiv_logger = logging.getLogger(__name__)
 
     from path import Path
+
     temp_count = len(list(Path(working_folder + "/temp_files/").files("*.json")))
 
     try:
