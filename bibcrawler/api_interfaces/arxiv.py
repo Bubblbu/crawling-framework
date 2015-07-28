@@ -92,7 +92,7 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
     for cat, subcats in crawling_list.iteritems():
         arxiv_logger.info("Crawling " + cat)
         subcat_len = len(subcats)
-        for subcat_count, subcategory in enumerate(subcats):
+        for subcat_count, subcategory in enumerate(subcats, start=1):
             arxiv_logger.debug(subcategory)
             crawl_start = time.time()
             cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
