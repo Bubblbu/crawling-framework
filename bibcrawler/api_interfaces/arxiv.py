@@ -304,16 +304,27 @@ def test_merge(timestamp):
 
     from path import Path
 
-    temp_count = len(list(Path(working_folder + "/temp_files/").files("*.json")))
+    temp_files = list(Path(working_folder + "/temp_files/").files("*.json"))
 
     try:
-        temp_json = {}
+        temp_jsons = []
 
-        for i in range(0, temp_count):
-            arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
-            with open(working_folder + "/temp_files/temp_{}.json".format(i)) as data_file:
+        for idx, temp_file in enumerate(temp_files):
+            arxiv_logger.debug(temp_file)
+            with open(temp_file) as data_file:
                 temp = json.load(data_file)
-            temp_json = {key: value for (key, value) in (temp_json.items() + temp.items())}
+            temp_jsons.append(temp)
+
+        temp_json = temp_jsons[0]
+        for d in temp_jsons[1:-1]:
+            for key, val_dict in d.items():
+                new_dict = {}
+                offset = len(temp_json[key].values())
+                for doc_id in val_dict.keys():
+                    new_doc_id = offset + int(doc_id)
+                    new_dict[new_doc_id] = val_dict.pop(doc_id)
+                temp_json[key].update(new_dict)
+            print("Length of concatenated dataset: ", len(temp_json['id'].keys()))
 
         result_df = pd.DataFrame.from_dict(temp_json)
 
