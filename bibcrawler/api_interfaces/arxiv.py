@@ -15,7 +15,8 @@ import pandas as pd
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
-import pandas.rpy.common as com
+from rpy2.robjects import pandas2ri
+pandas2ri.activate()
 
 import logging
 import logging.config
@@ -179,7 +180,7 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
                         continue
 
                     else:
-                        batch = com.convert_robj(batch)
+                        batch = pandas2ri.ri2py(batch)
                         batch_length = len(batch.index)
 
                         if batch_length != batchsize:

@@ -16,9 +16,10 @@ import pandas as pd
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as rpy2_objects
-import rpy2.robjects.numpy2ri
-rpy2.robjects.numpy2ri.activate()
-import pandas.rpy.common as com
+from rpy2.robjects import pandas2ri, numpy2ri
+
+numpy2ri.activate()
+pandas2ri.activate()
 
 import gc
 import csv
@@ -101,17 +102,16 @@ class CrossrefAPIThread(threading.Thread):
         while True:
             try:
                 self.idx, self.author, self.title, self.date = self.q.get_nowait()
-                temp = com.convert_robj(self.doi_lookuper.crossref(self.author,
-                                                                   self.title,
-                                                                   self.date.strftime("%Y-%m-%d %H:%M:%S")))
+                temp = pandas2ri.ri2py(self.doi_lookuper.crossref(self.author,
+                                                                  self.title,
+                                                                  self.date.strftime("%Y-%m-%d %H:%M:%S")))
 
-                # Use index 1 because R is 1-indexed -> 0 is not the first element
                 try:
-                    cr_title = temp['title'][1]
+                    cr_title = temp['title'][0]
                 except KeyError:
                     cr_title = ""
                 try:
-                    cr_doi = temp['DOI'][1]
+                    cr_doi = temp['DOI'][0]
                 except KeyError:
                     cr_doi = ""
 
