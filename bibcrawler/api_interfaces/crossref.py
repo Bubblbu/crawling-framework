@@ -91,10 +91,11 @@ class ProcessingThread(threading.Thread):
                     self.iq.task_done()
                     self.times.append(time.time() - ts)
 
-                    eta = (self.doc_count - self.progress_count) * np.mean(self.times)
+                    eta_h = int((self.doc_count - self.progress_count) * np.mean(self.times) / 60 // 60)
+                    eta_m = int(((self.doc_count - self.progress_count) * np.mean(self.times) / 60 / 60 - eta_h) * 60)
 
-                    print("PID {}: {}/{} - ETA: {:.2f}h".format(os.getpid(), self.progress_count,
-                                                                 self.doc_count, eta / 60 / 60))
+                    print("PID {}: {}/{} - ETA: {}h{:0>2}m".format(os.getpid(),
+                                                                   self.progress_count, self.doc_count, eta_h, eta_m))
                     self.progress_count += 1
 
                 except Queue.Empty:
