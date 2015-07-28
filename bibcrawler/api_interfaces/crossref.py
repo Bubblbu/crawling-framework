@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+This module provides multiprocessed crossref crawling. Multiprocessing -> not so nice logging... TODO
+"""
 
 from __future__ import print_function, division
 
@@ -28,7 +31,10 @@ import logging
 import logging.config
 from logging_dict import logging_confdict
 
+import collections
+
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
@@ -37,12 +43,15 @@ from utils import levenshtein_ratio, LR, clean_dataset
 
 
 class ProcessingThread(threading.Thread):
-    def __init__(self, working_folder, input_queue, output_queue):
+    def __init__(self, working_folder, input_queue, output_queue, doc_count):
         threading.Thread.__init__(self)
         self.event = threading.Event()
         self.iq = input_queue
         self.oq = output_queue
         self.wdir = working_folder
+        self.doc_count = doc_count
+        self.progress_count = 1
+        self.times = collections.deque(maxlen=50)
 
     def run(self):
         print("running")
@@ -50,6 +59,7 @@ class ProcessingThread(threading.Thread):
             writer = csv.writer(f, delimiter=";")
             while True:
                 try:
+                    ts = time.time()
                     result = self.iq.get_nowait()
 
                     lr = levenshtein_ratio(result['orig_title'], result['cr_title'])
@@ -79,6 +89,13 @@ class ProcessingThread(threading.Thread):
                     writer.writerow(line)
                     self.oq.put(result)
                     self.iq.task_done()
+                    self.times.append(time.time() - ts)
+
+                    eta = (self.doc_count - self.progress_count) * np.mean(self.times)
+
+                    print("PID {}: {}/{} - ETA: {:.2f}h".format(os.getpid(), self.progress_count,
+                                                                 self.doc_count, eta / 60 / 60))
+                    self.progress_count += 1
 
                 except Queue.Empty:
                     if self.event.is_set():
@@ -141,13 +158,15 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
     cr_to_process = Queue.Queue()
     process_to_result = Queue.Queue()
 
+    doc_count = 0
     for idx, author, title, date in zip(index, authors, titles, submitted):
         tokens = author.split("|")
         if len(tokens) >= 15:
             author = "|".join(tokens[:15])
         cr_input_queue.put((idx, author, title, date))
+        doc_count += 1
 
-    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result)
+    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result, doc_count)
 
     print("\nStarting crossref crawl process...")
     crossref_threads = []
@@ -165,6 +184,7 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
         thread.join()
 
     process_thread.event.set()
+
     process_thread.join()
 
     results = []
@@ -274,7 +294,7 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
 
 
 def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
-                remove_columns=None):
+                     remove_columns=None):
     """
     Cleans the crawl results from crossref.
 
