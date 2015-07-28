@@ -42,6 +42,10 @@ base_directory = Config.get('directories', 'base')
 from utils import levenshtein_ratio, LR, clean_dataset
 
 
+def get_crawl_speed(average_speed, smoothing_factor, last_speed):
+    return smoothing_factor * last_speed + (1-smoothing_factor) * average_speed
+
+
 class ProcessingThread(threading.Thread):
     def __init__(self, working_folder, input_queue, output_queue, doc_count):
         threading.Thread.__init__(self)
@@ -51,7 +55,7 @@ class ProcessingThread(threading.Thread):
         self.wdir = working_folder
         self.doc_count = doc_count
         self.progress_count = 1
-        self.times = collections.deque(maxlen=50)
+        self.average_speed = None
 
     def run(self):
         print("running")
@@ -89,10 +93,14 @@ class ProcessingThread(threading.Thread):
                     writer.writerow(line)
                     self.oq.put(result)
                     self.iq.task_done()
-                    self.times.append(time.time() - ts)
 
-                    eta_h = int((self.doc_count - self.progress_count) * np.mean(self.times) / 60 // 60)
-                    eta_m = int(((self.doc_count - self.progress_count) * np.mean(self.times) / 60 / 60 - eta_h) * 60)
+                    if not self.average_speed:
+                        self.average_speed = time.time() - ts
+                    else:
+                        self.average_speed = get_crawl_speed(self.average_speed, 0.5, time.time() - ts)
+
+                    eta_h = int((self.doc_count - self.progress_count) * self.average_speed / 60 // 60)
+                    eta_m = int(((self.doc_count - self.progress_count) * self.average_speed / 60 / 60 - eta_h) * 60)
 
                     print("PID {}: {}/{} - ETA: {}h{:0>2}m".format(os.getpid(),
                                                                    self.progress_count, self.doc_count, eta_h, eta_m))
