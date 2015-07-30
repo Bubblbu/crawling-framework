@@ -43,8 +43,24 @@ from utils import levenshtein_ratio, LR, clean_dataset
 
 
 def get_crawl_speed(average_speed, smoothing_factor, last_speed):
-    return smoothing_factor * last_speed + (1-smoothing_factor) * average_speed
+    return smoothing_factor * last_speed + (1 - smoothing_factor) * average_speed
 
+
+def get_hms(seconds):
+    eta_h = int(seconds / 60 / 60)
+    eta_m = int(seconds / 60 - eta_h * 60)
+    eta_s = int(seconds - eta_h * 3600 - eta_m * 60)
+    return eta_h, eta_m, eta_s
+
+
+def get_eta(average_speed, tps, doc_count, progress_count, eta_weight=0.2):
+    eta_h, eta_m, eta_s = get_hms((doc_count - progress_count) * average_speed)
+    tt_eta_h, tt_eta_m, tt_eta_s = get_hms(tps / progress_count * doc_count - tps)
+    eta_h = eta_weight*eta_h + (1-eta_weight)*tt_eta_h
+    eta_m = eta_weight*eta_m + (1-eta_weight)*tt_eta_m
+    eta_s = eta_weight*eta_s + (1-eta_weight)*tt_eta_s
+
+    return eta_h, eta_m, eta_s
 
 class ProcessingThread(threading.Thread):
     def __init__(self, working_folder, input_queue, output_queue, doc_count):
@@ -61,6 +77,7 @@ class ProcessingThread(threading.Thread):
         print("running")
         with open(self.wdir + "/crossref_crawl_summary.csv", "ab") as f:
             writer = csv.writer(f, delimiter=";")
+            tts = time.time()
             while True:
                 try:
                     ts = time.time()
@@ -94,16 +111,17 @@ class ProcessingThread(threading.Thread):
                     self.oq.put(result)
                     self.iq.task_done()
 
+                    passed_time = time.time() - ts
+                    tps = time.time() - tts
                     if not self.average_speed:
-                        self.average_speed = time.time() - ts
+                        self.average_speed = passed_time
                     else:
-                        self.average_speed = get_crawl_speed(self.average_speed, 0.5, time.time() - ts)
+                        self.average_speed = get_crawl_speed(self.average_speed, 0.8, passed_time)
 
-                    eta_h = int((self.doc_count - self.progress_count) * self.average_speed / 60 // 60)
-                    eta_m = int(((self.doc_count - self.progress_count) * self.average_speed / 60 / 60 - eta_h) * 60)
+                    eta_h, eta_m, eta_s = get_eta(self.average_speed, tps, self.doc_count, self.progress_count)
 
-                    print("PID {}: {}/{} - ETA: {}h{:0>2}m".format(os.getpid(),
-                                                                   self.progress_count, self.doc_count, eta_h, eta_m))
+                    print("PID {}: {}/{} - ETA: {}h {:0>2}m {:0>2}s".format(os.getpid(),
+                        self.progress_count, self.doc_count, int(eta_h), int(eta_m), int(eta_s)))
                     self.progress_count += 1
 
                 except Queue.Empty:
