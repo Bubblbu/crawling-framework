@@ -22,13 +22,30 @@ from logging_dict import logging_confdict
 
 import configparser
 
-Config = configparser.ConfigParser()
-Config.read('../../config.ini')
-base_directory = Config.get('directories', 'base')
-api_key = Config.get('ads_auth', 'api_key')
+config = configparser.ConfigParser()
+config.read('../../config.ini')
+base_directory = config.get('directories', 'base')
+api_key = config.get('ads', 'api_key')
+adsws_url = config.get('ads', 'ads_search_url')
 
-headers = {'Authorization': "Bearer:" + api_key}
-adsws_url = "http://adsws-staging.elasticbeanstalk.com/v1/search/query/"
+headers = {'Authorization': "Bearer " + api_key}
+
+
+def pretty_print_POST(req):
+    """
+    At this point it is completely built and ready
+    to be fired; it is "prepared".
+
+    However pay attention at the formatting used in
+    this function because it is programmed to be pretty
+    printed and may differ from the actual request.
+    """
+    print('{}\n{}\n{}\n\n{}'.format(
+        '-----------START-----------',
+        req.method + ' ' + req.url,
+        '\n'.join('{}: {}'.format(k, v) for k, v in req.headers.items()),
+        req.body,
+    ))
 
 
 class ADSThread(threading.Thread):
@@ -42,9 +59,15 @@ class ADSThread(threading.Thread):
         while not self.input_q.empty():
             count, payload = self.input_q.get_nowait()
             r = requests.get(adsws_url, params=payload, headers=headers)
+
+            pretty_print_POST(requests.Request('GET', adsws_url, data=payload).prepare())
+
             self.logger.info("Request {} - Status: {}".format(count, r.status_code))
-            temp = r.json()['response']['docs']
-            self.output_q.put(temp)
+            try:
+                temp = r.json()['response']['docs']
+                self.output_q.put(temp)
+            except Exception, e:
+                print(e)
 
 
 def ads_crawl_category(list_of_cats, number_of_docs=100, num_threads=1):
@@ -56,7 +79,7 @@ def ads_crawl_category(list_of_cats, number_of_docs=100, num_threads=1):
     :return: <str> - Working folder
     """
 
-    timestamp = arrow.utcnow().to('Europe/Vienna').format('%Y-%m-%d_%H-%M-%S')
+    timestamp = arrow.utcnow().to('Europe/Vienna').format('YYYY-MM-DD_HH-mm-ss')
 
     base_folder = base_directory
 
@@ -105,14 +128,14 @@ def ads_crawl_category(list_of_cats, number_of_docs=100, num_threads=1):
                 del doc['author']
             except KeyError:
                 doc['authors'] = []
-    
+
             if 'reader' not in doc:
                 doc['reader'] = []
-    
+
             doc['readers'] = int(doc['read_count'])
             doc['reader_ids'] = u";".join(doc['reader'])
             doc['title'] = doc['title'][0]
-    
+
             del doc['read_count']
             del doc['reader']
             rows.append(doc)
@@ -132,7 +155,7 @@ def ads_crawl_category(list_of_cats, number_of_docs=100, num_threads=1):
     return working_folder
 
 
-def ads_crawl_dataset(input_folder=None, number_of_docs=1, num_threads=1):
+def ads_crawl_dataset(input_folder=None, number_of_docs=100, num_threads=1):
     """
     Uses an existing dataframe containing arxiv_id's to crawl corresponding ADS data.
     Always uses the top *number_of_docs* documents for the search.
@@ -142,8 +165,7 @@ def ads_crawl_dataset(input_folder=None, number_of_docs=1, num_threads=1):
     :param num_threads: Number of threads
     :return: Newly created working folder
     """
-    ts_start = time.time()
-    timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
+    timestamp = arrow.utcnow().to('Europe/Vienna').format('YYYY-MM-DD_HH-mm-ss')
 
     # Create folder structure
     if not input_folder:
@@ -167,7 +189,7 @@ def ads_crawl_dataset(input_folder=None, number_of_docs=1, num_threads=1):
     ads_logger.info("\nCreated new folder: <<" + working_folder + ">>")
 
     # Read in stage 1 file
-    ads_logger.debug("\nReading in stage_1.json ... (Might take a few seconds)")
+    ads_logger.debug("\nReading in stage_3_raw.json ... (Might take a few seconds)")
     try:
         df = pd.read_json(base_folder + "/stage_3_raw.json")
     except IOError:
@@ -191,8 +213,7 @@ def ads_crawl_dataset(input_folder=None, number_of_docs=1, num_threads=1):
             if found_regex:
                 arxiv_id = found_regex[0]
 
-        payload = {'q': 'arxiv:{}'.format(arxiv_id), 'sort': 'read_count desc',
-                   'fl': 'reader,title,abstract,year,author,pub,read_count,citation_count,identifier'}
+        payload = {'q': 'arXiv:{}'.format(arxiv_id), 'sort': 'read_count desc'}
 
         input_queue.put((count, payload))
 
@@ -240,5 +261,10 @@ def ads_crawl_dataset(input_folder=None, number_of_docs=1, num_threads=1):
     return working_folder
 
 
+def clean_dataset(wd):
+    pass
+
+
 if __name__ == "__main__":
-    ads_crawl_dataset(input_folder=r"E:\Work\Know-Center\CrawlingFramework\files\cs_dl\2015-04-28_18-26-06\2015-04-28_18-30-33")
+    ads_crawl_dataset(
+        input_folder=r"E:\Work\Know-Center\CrawlingFramework\files\2015-07-23_17-11-25_qbio\2015-07-27_15-39-38\2015-07-27_16-16-35")
