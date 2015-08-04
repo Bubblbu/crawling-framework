@@ -29,7 +29,7 @@ if __name__ == '__main__':
     # folder = arxiv_crawl(crawling_list, batchsize=400, delay=None)
     # arxiv_cleanup(folder)
 
-    temp_folder = "2015-07-30_15-13-56"
+    temp_folder = "2015-07-23_13-10-23_math"
 
     # Only use if the merging of the temporary files leads to OutOfMemory...
     # TODO Deal with OutOfMemory during concatenation
@@ -38,8 +38,9 @@ if __name__ == '__main__':
 
     # === STAGE 2 ===
     # Maybe even more proccesses are ok... Havent benchmarked all the parallel stuff yet
-    folder = crossref_crawl(input_folder=temp_folder, num_processes=4, num_threads=15)
-    crossref_cleanup(folder)
+    continue_folder =  None
+    folder = crossref_crawl(input_folder=temp_folder, num_processes=4, num_threads=10, continue_folder=continue_folder)
+    # crossref_cleanup(folder)
 
     # === STAGE 3 ===
-    mendeley_crawl(stage1_dir=temp_folder, stage2_dir=None, num_threads=10)
+    # mendeley_crawl(stage1_dir=temp_folder, stage2_dir=None, num_threads=10)
