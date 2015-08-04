@@ -13,6 +13,7 @@ import datetime
 import threading
 import multiprocessing as mp
 import Queue
+from path import Path
 
 import numpy as np
 import pandas as pd
@@ -40,6 +41,7 @@ base_directory = Config.get('directories', 'base')
 from utils import levenshtein_ratio, LR, clean_dataset
 
 
+# Helper functions
 def get_crawl_speed(average_speed, smoothing_factor, last_speed):
     return smoothing_factor * last_speed + (1 - smoothing_factor) * average_speed
 
@@ -296,15 +298,26 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
     cr_logger.info("All processes finished")
 
     output = []
-    for p in results:
-        output.extend(p.get())
+    for temp_file in Path(temp_folder).files("*.csv"):
+        with open(temp_file, "rb") as tempfile:
+            r = csv.reader(tempfile, delimiter=";")
+            for line in r:
+                result = {'idx': int(line[0]),
+                          'cr_title': line[1],
+                          'cr_doi': line[3],
+                          'lr': line[4]}
+                if line[-1] == "False":
+                    result['cr_title'] = np.nan
+                    result['cr_doi'] = np.nan
+                output.append(result)
 
     cr_data = pd.DataFrame(output)
-    cr_data = cr_data.set_index(["idx"])
+    cr_data = cr_data.set_index("idx", drop=True)
 
     cr_logger.info("\nMerging stage_1 dataset and crossref results")
 
     stage_2_raw = pd.merge(stage_1, cr_data, left_index=True, right_index=True, how='left')
+
     stage_2_raw.sort_index(inplace=True)
 
     try:
