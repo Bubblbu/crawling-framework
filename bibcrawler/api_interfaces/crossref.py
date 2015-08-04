@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+This module provides multiprocessed crossref crawling. Multiprocessing -> not so nice logging... TODO
+"""
 
 from __future__ import print_function, division
 
@@ -16,9 +19,10 @@ import pandas as pd
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as rpy2_objects
-import rpy2.robjects.numpy2ri
-rpy2.robjects.numpy2ri.activate()
-import pandas.rpy.common as com
+from rpy2.robjects import pandas2ri, numpy2ri
+
+numpy2ri.activate()
+pandas2ri.activate()
 
 import gc
 import csv
@@ -28,6 +32,7 @@ import logging.config
 from logging_dict import logging_confdict
 
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
@@ -35,20 +40,45 @@ base_directory = Config.get('directories', 'base')
 from utils import levenshtein_ratio, LR, clean_dataset
 
 
+def get_crawl_speed(average_speed, smoothing_factor, last_speed):
+    return smoothing_factor * last_speed + (1 - smoothing_factor) * average_speed
+
+
+def get_hms(seconds):
+    eta_h = int(seconds / 60 / 60)
+    eta_m = int(seconds / 60 - eta_h * 60)
+    eta_s = int(seconds - eta_h * 3600 - eta_m * 60)
+    return eta_h, eta_m, eta_s
+
+
+def get_eta(average_speed, tps, doc_count, progress_count, eta_weight=0.2):
+    eta_h, eta_m, eta_s = get_hms((doc_count - progress_count) * average_speed)
+    tt_eta_h, tt_eta_m, tt_eta_s = get_hms(tps / progress_count * doc_count - tps)
+    eta_h = eta_weight*eta_h + (1-eta_weight)*tt_eta_h
+    eta_m = eta_weight*eta_m + (1-eta_weight)*tt_eta_m
+    eta_s = eta_weight*eta_s + (1-eta_weight)*tt_eta_s
+
+    return eta_h, eta_m, eta_s
+
 class ProcessingThread(threading.Thread):
-    def __init__(self, working_folder, input_queue, output_queue):
+    def __init__(self, working_folder, input_queue, output_queue, doc_count):
         threading.Thread.__init__(self)
         self.event = threading.Event()
         self.iq = input_queue
         self.oq = output_queue
         self.wdir = working_folder
+        self.doc_count = doc_count
+        self.progress_count = 1
+        self.average_speed = None
 
     def run(self):
         print("running")
         with open(self.wdir + "/crossref_crawl_summary.csv", "ab") as f:
             writer = csv.writer(f, delimiter=";")
+            tts = time.time()
             while True:
                 try:
+                    ts = time.time()
                     result = self.iq.get_nowait()
 
                     lr = levenshtein_ratio(result['orig_title'], result['cr_title'])
@@ -79,6 +109,19 @@ class ProcessingThread(threading.Thread):
                     self.oq.put(result)
                     self.iq.task_done()
 
+                    passed_time = time.time() - ts
+                    tps = time.time() - tts
+                    if not self.average_speed:
+                        self.average_speed = passed_time
+                    else:
+                        self.average_speed = get_crawl_speed(self.average_speed, 0.8, passed_time)
+
+                    eta_h, eta_m, eta_s = get_eta(self.average_speed, tps, self.doc_count, self.progress_count)
+
+                    print("PID {}: {}/{} - ETA: {}h {:0>2}m {:0>2}s".format(os.getpid(),
+                        self.progress_count, self.doc_count, int(eta_h), int(eta_m), int(eta_s)))
+                    self.progress_count += 1
+
                 except Queue.Empty:
                     if self.event.is_set():
                         break
@@ -101,17 +144,16 @@ class CrossrefAPIThread(threading.Thread):
         while True:
             try:
                 self.idx, self.author, self.title, self.date = self.q.get_nowait()
-                temp = com.convert_robj(self.doi_lookuper.crossref(self.author,
-                                                                   self.title,
-                                                                   self.date.strftime("%Y-%m-%d %H:%M:%S")))
+                temp = pandas2ri.ri2py(self.doi_lookuper.crossref(self.author,
+                                                                  self.title,
+                                                                  self.date.strftime("%Y-%m-%d %H:%M:%S")))
 
-                # Use index 1 because R is 1-indexed -> 0 is not the first element
                 try:
-                    cr_title = temp['title'][1]
+                    cr_title = temp['title'][0]
                 except KeyError:
                     cr_title = ""
                 try:
-                    cr_doi = temp['DOI'][1]
+                    cr_doi = temp['DOI'][0]
                 except KeyError:
                     cr_doi = ""
 
@@ -141,13 +183,15 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
     cr_to_process = Queue.Queue()
     process_to_result = Queue.Queue()
 
+    doc_count = 0
     for idx, author, title, date in zip(index, authors, titles, submitted):
         tokens = author.split("|")
         if len(tokens) >= 15:
             author = "|".join(tokens[:15])
         cr_input_queue.put((idx, author, title, date))
+        doc_count += 1
 
-    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result)
+    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result, doc_count)
 
     print("\nStarting crossref crawl process...")
     crossref_threads = []
@@ -165,6 +209,7 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
         thread.join()
 
     process_thread.event.set()
+
     process_thread.join()
 
     results = []
@@ -193,7 +238,6 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Create folder structure
-    global base_folder
     if not input_folder:
         all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
@@ -275,7 +319,7 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
 
 
 def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
-                remove_columns=None):
+                     remove_columns=None):
     """
     Cleans the crawl results from crossref.
 
