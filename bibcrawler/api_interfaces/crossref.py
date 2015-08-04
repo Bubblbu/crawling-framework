@@ -31,8 +31,6 @@ import logging
 import logging.config
 from logging_dict import logging_confdict
 
-import collections
-
 import configparser
 
 Config = configparser.ConfigParser()
