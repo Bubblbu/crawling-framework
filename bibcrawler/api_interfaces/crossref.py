@@ -283,11 +283,11 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
     pool_args = []
     for idx in range(num_processes):
         cr_logger.info("Starting process {}".format(idx))
-        indices = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].index
-        authors = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].authors
-        titles = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].title
-        submitted = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
-        pool_args.append([indices, authors, titles, submitted, ])
+        indices = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].index.values
+        authors = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].authors
+        titles = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].title
+        submitted = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
+        pool_args.append([indices, authors, titles, submitted])
 
     pool = mp.Pool(processes=num_processes)
     results = [pool.apply_async(crossref_lookup,
