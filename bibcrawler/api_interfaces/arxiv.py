@@ -16,6 +16,7 @@ import pandas as pd
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
 from rpy2.robjects import pandas2ri
+
 pandas2ri.activate()
 
 import logging
@@ -289,7 +290,7 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     try:
         stage_1.to_json(working_folder + "/stage_1.json")
         stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8",
-                       Config.get("csv", "sep_char"), index=False)
+                       sep=Config.get("csv", "sep_char"), index=False)
     except Exception, e:
         arxiv_logger.exception("Could not write all output files")
     else:
