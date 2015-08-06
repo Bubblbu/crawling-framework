@@ -5,3 +5,4 @@ ipython
 doc/build/
 config.ini
 venv_bibcrawler/
+venv_bibcrawler_64/
