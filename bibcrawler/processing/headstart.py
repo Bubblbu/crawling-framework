@@ -28,7 +28,7 @@ def create_headstart_files(working_folder, number_of_papers=None):
     metadata = df.iloc[0:number_of_papers]
     print(metadata.describe())
     metadata['id'] = range(1, number_of_papers+1)
-    metadata.to_csv(working_folder + "/metadata.csv", sep=";", index=False, encoding="utf8")
+    metadata.to_csv(working_folder + "/metadata.csv", sep=",", index=False, encoding="utf8")
 
     # Co-occurence matrix
     # cooc = np.zeros((len(readers)+1, len(readers)+1), dtype=int)

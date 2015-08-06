@@ -22,11 +22,11 @@ from logging_dict import logging_confdict
 
 import configparser
 
-config = configparser.ConfigParser()
-config.read('../../config.ini')
-base_directory = config.get('directories', 'base')
-api_key = config.get('ads', 'api_key')
-adsws_url = config.get('ads', 'ads_search_url')
+Config = configparser.ConfigParser()
+Config.read('../../config.ini')
+base_directory = Config.get('directories', 'base')
+api_key = Config.get('ads', 'api_key')
+adsws_url = Config.get('ads', 'ads_search_url')
 
 headers = {'Authorization': "Bearer " + api_key}
 
@@ -255,7 +255,8 @@ def ads_crawl_dataset(input_folder=None, number_of_docs=100, num_threads=1):
     df.index.name = "id"
 
     # Output
-    df.to_csv(working_folder + "/ads_data.csv", sep=";", encoding='utf8', index=False)
+    df.to_csv(working_folder + "/ads_data.csv", Config.get("csv", "sep_char"),
+              encoding='utf8', index=False)
     df.to_json(working_folder + "/ads_data.json")
 
     return working_folder

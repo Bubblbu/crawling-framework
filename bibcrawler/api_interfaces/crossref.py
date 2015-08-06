@@ -343,7 +343,8 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None, continue_f
 
     try:
         stage_2_raw.to_json(working_folder + "/stage_2_raw.json")
-        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8", sep=";", index=False)
+        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8",
+                           sep=Config.get("csv", "sep_char"), index=False)
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
@@ -415,7 +416,9 @@ def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
 
     try:
         stage_2.to_json(working_folder + "/stage_2.json")
-        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8", sep=";", index=False)
+        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8",
+                       sep=Config.get("csv", "sep_char"), index=False)
+
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:

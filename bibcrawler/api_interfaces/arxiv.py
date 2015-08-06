@@ -215,7 +215,8 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
 
     ts_finish = time.time()
 
-    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv", sep=";", index=False)
+    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv",
+                            Config.get("csv", "sep_char"), index=False)
 
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
@@ -287,7 +288,8 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
 
     try:
         stage_1.to_json(working_folder + "/stage_1.json")
-        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";", index=False)
+        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8",
+                       Config.get("csv", "sep_char"), index=False)
     except Exception, e:
         arxiv_logger.exception("Could not write all output files")
     else:
