@@ -268,7 +268,10 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     arxiv_logger = logging.getLogger(__name__ + "_cleanup")
 
     if not remove_columns:
-        remove_columns = [u'abstract', u'affiliations', u'link_abstract', u'link_doi', u'link_pdf', u'comment']
+        try:
+            remove_columns = eval(Config.get('data_settings', 'remove_cols'))
+        except KeyError:
+            pass
 
     # Read in stage_1 raw file
     try:

@@ -1,11 +1,16 @@
 [directories]
 base =
-stage1 =
-stage2 =
 
 [mndly_auth]
 client_id =
 secret =
 
-[ads_auth]
+[ads]
+ads_search_url = https://api.adsabs.harvard.edu/v1/search/query/
 api_key =
+
+[csv]
+sep_char = ","
+
+[data_settings]
+remove_cols =
