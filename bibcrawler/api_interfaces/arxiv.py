@@ -279,6 +279,7 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
         arxiv_logger.info("Stage_1_raw successfully loaded")
 
     stage_1 = clean_dataset(stage_1_raw, arxiv_logger, earliest_date, latest_date, remove_columns)
+    stage_1['submitted'] = pd.to_datetime(stage_1['submitted'], unit="ms")
 
     try:
         stage_1.to_json(working_folder + "/stage_1.json")
