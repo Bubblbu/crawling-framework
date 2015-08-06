@@ -238,7 +238,7 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None, continue_f
         latest_subdir = max(all_subdirs, key=Path.getmtime)
         base_folder = latest_subdir + "/"
     else:
-        base_folder = base_directory + input_folder
+        base_folder = input_folder
         if base_folder[-1] != "/":
             base_folder += "/"
 

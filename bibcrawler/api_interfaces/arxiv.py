@@ -31,7 +31,7 @@ Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
-from utils import get_subcat_fullname, clean_dataset
+from utils import get_subcat_fullname, clean_dataset, regex_old_arxiv, regex_new_arxiv
 
 
 def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
@@ -285,7 +285,21 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
         arxiv_logger.info("Stage_1_raw successfully loaded")
 
     stage_1 = clean_dataset(stage_1_raw, arxiv_logger, earliest_date, latest_date, remove_columns)
+
     stage_1['submitted'] = pd.to_datetime(stage_1['submitted'], unit="ms")
+    arxiv_ids = []
+    for original_arxiv in stage_1['id'].values:
+        found_regex = regex_new_arxiv.findall(original_arxiv)
+        if found_regex:
+            arxiv_id = found_regex[0]
+        else:
+            found_regex = regex_old_arxiv.findall(original_arxiv)
+            if found_regex:
+                arxiv_id = found_regex[0]
+            else:
+                print("no arxiv_id parsed")
+        arxiv_ids.append(arxiv_id)
+    stage_1['arxiv_id'] = pd.Series(arxiv_ids, index=stage_1.index)
 
     try:
         stage_1.to_json(working_folder + "/stage_1.json")
