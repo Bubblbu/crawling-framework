@@ -58,25 +58,22 @@ class MendeleyThread(threading.Thread):
                     arxiv_id = found_regex[0]
 
             if regex_doi.match(str(row['doi'])):
-                doi = row['doi']
+                arxiv_doi = row['doi']
             else:
                 if regex_doi.match(str(row['cr_doi'])):
-                    doi = row['cr_doi']
+                    arxiv_doi = row['cr_doi']
                 else:
-                    doi = None
+                    arxiv_doi = None
 
             self.logger.debug("\n=== FILE {} of {} === id:{}".format(count, self.max_len, arxiv_id))
 
             src = {'arxiv_id': arxiv_id,
-                   'arxiv_doi': row['doi'],
-                   'cr_doi': row['cr_doi'],
-                   'title': row['title'],
-                   'submitted': row['submitted'],
+                   'title' : row['title'],
                    'mndly_path': np.nan}
 
-            if doi:
+            if arxiv_doi:
                 try:
-                    doi_document = self.session.catalog.by_identifier(doi=doi, view='all')
+                    doi_document = self.session.catalog.by_identifier(doi=arxiv_doi, view='all')
                 except (MendeleyException, MendeleyApiException), e:
                     pass
                 except Exception, e:
@@ -152,10 +149,7 @@ def init_temp(src):
     """
     temp = dict()
     temp['arxiv_id'] = src['arxiv_id']
-    temp['arxiv_doi'] = src['arxiv_doi']
-    temp['cr_doi'] = src['cr_doi']
     temp['mndly_path'] = src['mndly_path']
-    temp['submitted'] = src['submitted']
 
     temp['mndly_match'] = np.nan
     temp['type'] = np.nan
@@ -246,7 +240,7 @@ def add_new_entry(src, mndly_doc):
 
         temp['type'] = mndly_doc.type
         temp['identifier_count'] = len(mndly_doc.identifiers)
-        temp['identifiers'] = "-".join(mndly_doc.identifiers)
+        temp['identifiers'] = "-".join(sorted(mndly_doc.identifiers))
 
         temp['mndly_arxiv'] = mndly_doc.identifiers['arxiv'] if 'arxiv' in mndly_doc.identifiers else np.nan
         temp['mndly_doi'] = mndly_doc.identifiers['doi'] if 'doi' in mndly_doc.identifiers else np.nan
@@ -259,10 +253,10 @@ def add_new_entry(src, mndly_doc):
         temp['abstract'] = mndly_doc.abstract
         temp['link'] = mndly_doc.link
         try:
-            temp['authors'] = [{'first_name': elem.first_name, 'last_name': elem.last_name} for elem in
+            temp['mndly_authors'] = [{'first_name': elem.first_name, 'last_name': elem.last_name} for elem in
                                mndly_doc.authors]
         except TypeError:
-            temp['authors'] = []
+            temp['mndly_authors'] = []
 
         # bibliometic data
         temp['pages'] = mndly_doc.pages
@@ -323,7 +317,7 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
         stage1_dir = latest_subdir + "/"
     else:
-        stage1_dir = base_directory + stage1_dir + "/"
+        stage1_dir += "/"
 
     if not stage2_dir:
         all_subdirs = [stage1_dir + d for d in os.listdir(stage1_dir) if os.path.isdir(stage1_dir + d)]
@@ -365,6 +359,14 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
         output_dicts.append(output_q.get_nowait())
 
     stage_3_raw = pd.DataFrame(output_dicts)
+    stage_3_raw = pd.merge(left=input_df,
+                           right=stage_3_raw,
+                           left_on="arxiv_id",
+                           right_on="arxiv_id",
+                           how="outer")
+
+    stage_3_raw['submitted'] = pd.to_datetime(stage_3_raw['submitted'], unit="ms")
+
     try:
         stage_3_raw.to_json(working_folder + "/stage_3_raw.json")
         stage_3_raw.to_csv(working_folder + "/stage_3_raw.csv", encoding="utf-8",
