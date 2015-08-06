@@ -277,7 +277,8 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     try:
         stage_1_raw = pd.read_json(working_folder + "/stage_1_raw.json")
     except Exception, e:
-        arxiv_logger.exception("Could not load stage_1_raw file")
+        arxiv_logger.exception("Could not load stage_1_raw file. Exiting...")
+        sys.exit("Could not load stage_1_raw file")
     else:
         arxiv_logger.info("Stage_1_raw successfully loaded")
 
