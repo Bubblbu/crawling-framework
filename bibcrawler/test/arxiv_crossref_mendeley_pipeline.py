@@ -21,15 +21,15 @@ if __name__ == '__main__':
     # crawling_list = get_arxiv_subcats(['cs'])
 
     # If you want to test with a smaller
-    # crawling_list = {"q-fin": ["q-fin.PR"]}
+    crawling_list = {"q-fin": ["q-fin.PR"]}
 
-    # folder = r"E:\Work\Know-Center\CrawlingFramework\files\2015-07-23_13-10-23"
 
     # === STAGE 1 ===
-    # folder = arxiv_crawl(crawling_list, batchsize=400, delay=None)
-    # arxiv_cleanup(folder)
+    folder = arxiv_crawl(crawling_list, batchsize=400, delay=None)
+    continue_folder = None
+    # folder = r"E:\Work\Know-Center\CrawlingFramework\files\2015-07-27_12-39-45_astroph"
 
-    temp_folder = "2015-07-23_13-10-23_math"
+    arxiv_cleanup(folder)
 
     # Only use if the merging of the temporary files leads to OutOfMemory...
     # TODO Deal with OutOfMemory during concatenation
@@ -38,9 +38,10 @@ if __name__ == '__main__':
 
     # === STAGE 2 ===
     # Maybe even more proccesses are ok... Havent benchmarked all the parallel stuff yet
-    continue_folder =  None
-    folder = crossref_crawl(input_folder=temp_folder, num_processes=4, num_threads=10, continue_folder=continue_folder)
-    # crossref_cleanup(folder)
+
+    crossref_crawl(input_folder=folder, num_processes=4, num_threads=5,
+                   continue_folder=continue_folder)
+    crossref_cleanup(folder)
 
     # === STAGE 3 ===
-    # mendeley_crawl(stage1_dir=temp_folder, stage2_dir=None, num_threads=10)
+    mendeley_crawl(stage1_dir=folder, stage2_dir=None, num_threads=10)
