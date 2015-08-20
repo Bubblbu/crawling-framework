@@ -18,7 +18,7 @@ A python framework to crawl various bibliometric sources.
   | Input     | DataFrame containing *title, authors, date* |
   | Output    | Input dataframe extended with *cr_doi, cr_title, lr* (levensthein_ratio) |
 
-* **Mendeley** - Altmetric/Science2.0 stuff
+* **Mendeley** - Altmetrics
 
   | Parameter | Description |
   | -------   | ------------- |
