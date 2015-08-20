@@ -269,12 +269,6 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     logging.config.dictConfig(config)
     arxiv_logger = logging.getLogger(__name__ + "_cleanup")
 
-    if not remove_columns:
-        try:
-            remove_columns = eval(Config.get('data_settings', 'remove_cols'))
-        except KeyError:
-            pass
-
     # Read in stage_1 raw file
     try:
         stage_1_raw = pd.read_json(working_folder + "/stage_1_raw.json")
@@ -284,6 +278,8 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     else:
         arxiv_logger.info("Stage_1_raw successfully loaded")
 
+    if not remove_columns:
+        remove_columns = eval(Config.get('data_settings', 'remove_cols'))
     stage_1 = clean_dataset(stage_1_raw, arxiv_logger, earliest_date, latest_date, remove_columns)
 
     stage_1['submitted'] = pd.to_datetime(stage_1['submitted'], unit="ms")
