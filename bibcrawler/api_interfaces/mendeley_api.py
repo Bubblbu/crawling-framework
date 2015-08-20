@@ -372,7 +372,6 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
             if found_regex:
                 arxiv_id = found_regex[0]
             else:
-                print("no arxiv_id parsed")
                 arxiv_id = "parse_failed"
         arxiv_ids.append(arxiv_id)
     input_df['arxiv_id'] = pd.Series(arxiv_ids, index=input_df.index)

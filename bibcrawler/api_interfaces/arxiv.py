@@ -293,7 +293,7 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
             if found_regex:
                 arxiv_id = found_regex[0]
             else:
-                print("no arxiv_id parsed")
+                arxiv_id = "parse_failed"
         arxiv_ids.append(arxiv_id)
     stage_1['arxiv_id'] = pd.Series(arxiv_ids, index=stage_1.index)
 
