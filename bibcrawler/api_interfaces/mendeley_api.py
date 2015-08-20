@@ -18,6 +18,7 @@ import logging.config
 from logging_dict import logging_confdict
 
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
@@ -33,6 +34,7 @@ class MendeleyThread(threading.Thread):
     Mendeley Thread.
     Takes single rows from stage_2 as input and returns stage_3 rows as dicts.
     """
+
     def __init__(self, logger, input_q, output_q, max_len, session):
         threading.Thread.__init__(self)
         self.logger = logger
@@ -69,7 +71,7 @@ class MendeleyThread(threading.Thread):
             self.logger.debug("\n=== FILE {} of {} === id:{}".format(count, self.max_len, arxiv_id))
 
             src = {'arxiv_id': arxiv_id,
-                   'title' : row['title'],
+                   'title': row['title'],
                    'mndly_path': np.nan}
 
             if arxiv_doi:
@@ -255,7 +257,7 @@ def add_new_entry(src, mndly_doc):
         temp['link'] = mndly_doc.link
         try:
             temp['mndly_authors'] = [{'first_name': elem.first_name, 'last_name': elem.last_name} for elem in
-                               mndly_doc.authors]
+                                     mndly_doc.authors]
         except TypeError:
             temp['mndly_authors'] = []
 
@@ -359,7 +361,7 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
     while not output_q.empty():
         output_dicts.append(output_q.get_nowait())
 
-    #  ================= TEMPORARY HACK ==============
+    # ================= TEMPORARY HACK ==============
     arxiv_ids = []
     for original_arxiv in input_df['id'].values:
         found_regex = regex_new_arxiv.findall(original_arxiv)
@@ -371,6 +373,7 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
                 arxiv_id = found_regex[0]
             else:
                 print("no arxiv_id parsed")
+                arxiv_id = "parse_failed"
         arxiv_ids.append(arxiv_id)
     input_df['arxiv_id'] = pd.Series(arxiv_ids, index=input_df.index)
     #  ================= TEMPORARY HACK ==============
@@ -402,7 +405,7 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
 def mendeley_cleanup(working_folder, earliest_date=None, latest_date=None,
                      remove_columns=None):
     """
-    Cleans the crawl results from crossref.
+    Cleans the crawl results from mendeley.
 
     :param working_folder: Folder containing the files
     :type working_folder: str
