@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, division
+import sys
 
 import os
 import time
@@ -21,7 +22,7 @@ Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
-from utils import regex_old_arxiv, regex_new_arxiv, regex_doi, levenshtein_ratio, LR
+from utils import regex_old_arxiv, regex_new_arxiv, regex_doi, levenshtein_ratio, LR, clean_dataset
 
 from mendeley import Mendeley
 from mendeley.exception import MendeleyException, MendeleyApiException
@@ -157,7 +158,7 @@ def init_temp(src):
     temp['keywords'] = np.nan
     temp['abstract'] = np.nan
     temp['link'] = np.nan
-    temp['authors'] = np.nan
+    temp['mndly_authors'] = np.nan
 
     # bibliometic data
     temp['pages'] = np.nan
@@ -358,6 +359,22 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
     while not output_q.empty():
         output_dicts.append(output_q.get_nowait())
 
+    #  ================= TEMPORARY HACK ==============
+    arxiv_ids = []
+    for original_arxiv in input_df['id'].values:
+        found_regex = regex_new_arxiv.findall(original_arxiv)
+        if found_regex:
+            arxiv_id = found_regex[0]
+        else:
+            found_regex = regex_old_arxiv.findall(original_arxiv)
+            if found_regex:
+                arxiv_id = found_regex[0]
+            else:
+                print("no arxiv_id parsed")
+        arxiv_ids.append(arxiv_id)
+    input_df['arxiv_id'] = pd.Series(arxiv_ids, index=input_df.index)
+    #  ================= TEMPORARY HACK ==============
+
     stage_3_raw = pd.DataFrame(output_dicts)
     stage_3_raw = pd.merge(left=input_df,
                            right=stage_3_raw,
@@ -366,6 +383,9 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
                            how="outer")
 
     stage_3_raw['submitted'] = pd.to_datetime(stage_3_raw['submitted'], unit="ms")
+    stage_3_raw['updated'] = pd.to_datetime(stage_3_raw['updated'], unit="ms")
+
+    del stage_3_raw['abstract']
 
     try:
         stage_3_raw.to_json(working_folder + "/stage_3_raw.json")
@@ -377,3 +397,50 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
         logger.info("Wrote stage_3_raw json and csv output files")
 
     return working_folder
+
+
+def mendeley_cleanup(working_folder, earliest_date=None, latest_date=None,
+                     remove_columns=None):
+    """
+    Cleans the crawl results from crossref.
+
+    :param working_folder: Folder containing the files
+    :type working_folder: str
+    :param remove_columns: Columns to be removed from the crawled dataframe. If none given, default is None
+    :type remove_columns: list of str
+    :param earliest_date: Articles before this date are removed
+    :type earliest_date: datetime
+    :param latest_date: Articles after this date are removed
+    :type latest_date: datetime
+
+    :return: None
+    """
+
+    config = logging_confdict(working_folder, __name__ + "_cleanup")
+    logging.config.dictConfig(config)
+    cr_logger = logging.getLogger(__name__ + "_cleanup")
+
+    # Read in stage_1 raw file
+    try:
+        stage_3_raw = pd.read_json(working_folder + "/stage_3_raw.json")
+    except Exception, e:
+        cr_logger.exception("Could not load stage_1_raw file")
+        sys.exit("Could not load stage 2 raw")
+    else:
+        cr_logger.info("Stage_1_raw successfully loaded")
+
+    if not remove_columns:
+        remove_columns = eval(Config.get('data_settings', 'remove_cols'))
+    stage_3 = clean_dataset(stage_3_raw, cr_logger, earliest_date, latest_date, remove_columns)
+
+    stage_3.index = range(0, len(stage_3.index))
+
+    try:
+        stage_3.to_json(working_folder + "/stage_3.json")
+        stage_3.to_csv(working_folder + "/stage_3.csv", encoding="utf-8",
+                       sep=Config.get("csv", "sep_char"), index=False)
+
+    except Exception, e:
+        cr_logger.exception("Could not write all output files")
+    else:
+        cr_logger.info("Wrote stage-3 cleaned json and csv output files")
