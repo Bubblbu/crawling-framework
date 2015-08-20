@@ -243,7 +243,7 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None, continue_f
             base_folder += "/"
 
     if continue_folder:
-        working_folder = base_folder + continue_folder
+        working_folder = continue_folder
         temp_folder = working_folder + "/temp/"
     else:
         working_folder = base_folder + timestamp
@@ -291,22 +291,25 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None, continue_f
 
     crawl_stage_1 = stage_1.drop(skip_indices)
 
-    print(len(stage_1.index), len(crawl_stage_1.index))
-
     cr_logger.info("\nSpawning {} processes - output will be cluttered... :S\n".format(num_processes))
     # Split df into n sub-dataframes for n processes
     df_ranges = range(0, len(crawl_stage_1.index), len(crawl_stage_1.index) // num_processes+1)
     df_ranges = df_ranges + [len(crawl_stage_1.index)]
-
-    print(df_ranges)
     pool_args = []
-    for idx in range(num_processes):
-        cr_logger.info("Starting process {}".format(idx))
-        indices = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].index.values
-        authors = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].authors
-        titles = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].title
-        submitted = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
+    if len(df_ranges) == 1:
+        indices = []
+        authors = []
+        titles = []
+        submitted = []
         pool_args.append([indices, authors, titles, submitted])
+    else:
+        for idx in range(num_processes):
+            cr_logger.info("Starting process {}".format(idx))
+            indices = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].index.values
+            authors = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].authors
+            titles = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].title
+            submitted = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
+            pool_args.append([indices, authors, titles, submitted])
 
     pool = mp.Pool(processes=num_processes)
     for x in pool_args:
@@ -383,6 +386,8 @@ def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
     else:
         cr_logger.info("Stage_1_raw successfully loaded")
 
+    if not remove_columns:
+        remove_columns = eval(Config.get('data_settings', 'remove_cols'))
     stage_2 = clean_dataset(stage_2_raw, cr_logger, earliest_date, latest_date, remove_columns)
 
     cr_unique_dois = stage_2.cr_doi.unique()
