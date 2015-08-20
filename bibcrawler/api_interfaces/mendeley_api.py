@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function, division
+import sys
 
 import os
 import time
@@ -17,11 +18,12 @@ import logging.config
 from logging_dict import logging_confdict
 
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
-from utils import regex_old_arxiv, regex_new_arxiv, regex_doi, levenshtein_ratio, LR
+from utils import regex_old_arxiv, regex_new_arxiv, regex_doi, levenshtein_ratio, LR, clean_dataset
 
 from mendeley import Mendeley
 from mendeley.exception import MendeleyException, MendeleyApiException
@@ -32,6 +34,7 @@ class MendeleyThread(threading.Thread):
     Mendeley Thread.
     Takes single rows from stage_2 as input and returns stage_3 rows as dicts.
     """
+
     def __init__(self, logger, input_q, output_q, max_len, session):
         threading.Thread.__init__(self)
         self.logger = logger
@@ -58,25 +61,22 @@ class MendeleyThread(threading.Thread):
                     arxiv_id = found_regex[0]
 
             if regex_doi.match(str(row['doi'])):
-                doi = row['doi']
+                arxiv_doi = row['doi']
             else:
                 if regex_doi.match(str(row['cr_doi'])):
-                    doi = row['cr_doi']
+                    arxiv_doi = row['cr_doi']
                 else:
-                    doi = None
+                    arxiv_doi = None
 
             self.logger.debug("\n=== FILE {} of {} === id:{}".format(count, self.max_len, arxiv_id))
 
             src = {'arxiv_id': arxiv_id,
-                   'arxiv_doi': row['doi'],
-                   'cr_doi': row['cr_doi'],
                    'title': row['title'],
-                   'submitted': row['submitted'],
                    'mndly_path': np.nan}
 
-            if doi:
+            if arxiv_doi:
                 try:
-                    doi_document = self.session.catalog.by_identifier(doi=doi, view='all')
+                    doi_document = self.session.catalog.by_identifier(doi=arxiv_doi, view='all')
                 except (MendeleyException, MendeleyApiException), e:
                     pass
                 except Exception, e:
@@ -152,10 +152,7 @@ def init_temp(src):
     """
     temp = dict()
     temp['arxiv_id'] = src['arxiv_id']
-    temp['arxiv_doi'] = src['arxiv_doi']
-    temp['cr_doi'] = src['cr_doi']
     temp['mndly_path'] = src['mndly_path']
-    temp['submitted'] = src['submitted']
 
     temp['mndly_match'] = np.nan
     temp['type'] = np.nan
@@ -163,7 +160,7 @@ def init_temp(src):
     temp['keywords'] = np.nan
     temp['abstract'] = np.nan
     temp['link'] = np.nan
-    temp['authors'] = np.nan
+    temp['mndly_authors'] = np.nan
 
     # bibliometic data
     temp['pages'] = np.nan
@@ -246,7 +243,7 @@ def add_new_entry(src, mndly_doc):
 
         temp['type'] = mndly_doc.type
         temp['identifier_count'] = len(mndly_doc.identifiers)
-        temp['identifiers'] = "-".join(mndly_doc.identifiers)
+        temp['identifiers'] = "-".join(sorted(mndly_doc.identifiers))
 
         temp['mndly_arxiv'] = mndly_doc.identifiers['arxiv'] if 'arxiv' in mndly_doc.identifiers else np.nan
         temp['mndly_doi'] = mndly_doc.identifiers['doi'] if 'doi' in mndly_doc.identifiers else np.nan
@@ -259,10 +256,10 @@ def add_new_entry(src, mndly_doc):
         temp['abstract'] = mndly_doc.abstract
         temp['link'] = mndly_doc.link
         try:
-            temp['authors'] = [{'first_name': elem.first_name, 'last_name': elem.last_name} for elem in
-                               mndly_doc.authors]
+            temp['mndly_authors'] = [{'first_name': elem.first_name, 'last_name': elem.last_name} for elem in
+                                     mndly_doc.authors]
         except TypeError:
-            temp['authors'] = []
+            temp['mndly_authors'] = []
 
         # bibliometic data
         temp['pages'] = mndly_doc.pages
@@ -323,7 +320,7 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
         latest_subdir = max(all_subdirs, key=os.path.getmtime)
         stage1_dir = latest_subdir + "/"
     else:
-        stage1_dir = base_directory + stage1_dir + "/"
+        stage1_dir += "/"
 
     if not stage2_dir:
         all_subdirs = [stage1_dir + d for d in os.listdir(stage1_dir) if os.path.isdir(stage1_dir + d)]
@@ -364,13 +361,88 @@ def mendeley_crawl(stage1_dir=None, stage2_dir=None, num_threads=1):
     while not output_q.empty():
         output_dicts.append(output_q.get_nowait())
 
+    # ================= TEMPORARY HACK ==============
+    arxiv_ids = []
+    for original_arxiv in input_df['id'].values:
+        found_regex = regex_new_arxiv.findall(original_arxiv)
+        if found_regex:
+            arxiv_id = found_regex[0]
+        else:
+            found_regex = regex_old_arxiv.findall(original_arxiv)
+            if found_regex:
+                arxiv_id = found_regex[0]
+            else:
+                arxiv_id = "parse_failed"
+        arxiv_ids.append(arxiv_id)
+    input_df['arxiv_id'] = pd.Series(arxiv_ids, index=input_df.index)
+    #  ================= TEMPORARY HACK ==============
+
     stage_3_raw = pd.DataFrame(output_dicts)
+    stage_3_raw = pd.merge(left=input_df,
+                           right=stage_3_raw,
+                           left_on="arxiv_id",
+                           right_on="arxiv_id",
+                           how="outer")
+
+    stage_3_raw['submitted'] = pd.to_datetime(stage_3_raw['submitted'], unit="ms")
+    stage_3_raw['updated'] = pd.to_datetime(stage_3_raw['updated'], unit="ms")
+
+    del stage_3_raw['abstract']
+
     try:
         stage_3_raw.to_json(working_folder + "/stage_3_raw.json")
-        stage_3_raw.to_csv(working_folder + "/stage_3_raw.csv", encoding="utf-8", sep=";", index=False)
+        stage_3_raw.to_csv(working_folder + "/stage_3_raw.csv", encoding="utf-8",
+                           sep=Config.get("csv", "sep_char"), index=False)
     except Exception, e:
         logger.exception("Could not write all output files")
     else:
         logger.info("Wrote stage_3_raw json and csv output files")
 
     return working_folder
+
+
+def mendeley_cleanup(working_folder, earliest_date=None, latest_date=None,
+                     remove_columns=None):
+    """
+    Cleans the crawl results from mendeley.
+
+    :param working_folder: Folder containing the files
+    :type working_folder: str
+    :param remove_columns: Columns to be removed from the crawled dataframe. If none given, default is None
+    :type remove_columns: list of str
+    :param earliest_date: Articles before this date are removed
+    :type earliest_date: datetime
+    :param latest_date: Articles after this date are removed
+    :type latest_date: datetime
+
+    :return: None
+    """
+
+    config = logging_confdict(working_folder, __name__ + "_cleanup")
+    logging.config.dictConfig(config)
+    cr_logger = logging.getLogger(__name__ + "_cleanup")
+
+    # Read in stage_1 raw file
+    try:
+        stage_3_raw = pd.read_json(working_folder + "/stage_3_raw.json")
+    except Exception, e:
+        cr_logger.exception("Could not load stage_1_raw file")
+        sys.exit("Could not load stage 2 raw")
+    else:
+        cr_logger.info("Stage_1_raw successfully loaded")
+
+    if not remove_columns:
+        remove_columns = eval(Config.get('data_settings', 'remove_cols'))
+    stage_3 = clean_dataset(stage_3_raw, cr_logger, earliest_date, latest_date, remove_columns)
+
+    stage_3.index = range(0, len(stage_3.index))
+
+    try:
+        stage_3.to_json(working_folder + "/stage_3.json")
+        stage_3.to_csv(working_folder + "/stage_3.csv", encoding="utf-8",
+                       sep=Config.get("csv", "sep_char"), index=False)
+
+    except Exception, e:
+        cr_logger.exception("Could not write all output files")
+    else:
+        cr_logger.info("Wrote stage-3 cleaned json and csv output files")

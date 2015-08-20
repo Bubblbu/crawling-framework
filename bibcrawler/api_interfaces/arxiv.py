@@ -15,18 +15,23 @@ import pandas as pd
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as R
-import pandas.rpy.common as com
+from rpy2.robjects import pandas2ri
+
+pandas2ri.activate()
 
 import logging
 import logging.config
 from logging_dict import logging_confdict
 
+import json
+
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
 
-from utils import get_subcat_fullname, clean_dataset
+from utils import get_subcat_fullname, clean_dataset, regex_old_arxiv, regex_new_arxiv
 
 
 def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None, update_range=None, delay=None):
@@ -87,7 +92,8 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
     init_batchsize = batchsize
     for cat, subcats in crawling_list.iteritems():
         arxiv_logger.info("Crawling " + cat)
-        for subcategory in subcats:
+        subcat_len = len(subcats)
+        for subcat_count, subcategory in enumerate(subcats, start=1):
             arxiv_logger.debug(subcategory)
             crawl_start = time.time()
             cat_count = arxiv_crawler.get_cat_count(subcategory)[0]
@@ -108,9 +114,12 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
                 if count == len(start_range) - 1:
                     break
                 arxiv_logger.info(
-                    "{}: Batch {} out of {} - start:{}|bs:{}".format(subcategory, count + 1, len(start_range) - 1,
-                                                                     start,
-                                                                     start_range[count + 1] - start_range[count]))
+                    "{}/{} {}: Batch {:<2} out of {} - start:{:<5} | batchsize:{}".format(subcat_count, subcat_len,
+                                                                                          subcategory, count + 1,
+                                                                                          len(start_range) - 1,
+                                                                                          start,
+                                                                                          start_range[count + 1] -
+                                                                                          start_range[count]))
                 try_count = 0
                 while True:
                     try:
@@ -172,7 +181,7 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
                         continue
 
                     else:
-                        batch = com.convert_robj(batch)
+                        batch = pandas2ri.ri2py(batch)
                         batch_length = len(batch.index)
 
                         if batch_length != batchsize:
@@ -207,17 +216,21 @@ def arxiv_crawl(crawling_list, limit=None, batchsize=100, submission_range=None,
 
     ts_finish = time.time()
 
-    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv", sep=";", index=False)
+    crawling_summary.to_csv(working_folder + "/arxiv_crawl_summary.csv",
+                            Config.get("csv", "sep_char"), index=False)
 
     arxiv_logger.info("Total crawl time: " + str(ts_finish - ts_start) + "s\n")
 
     # Merge all temporary files
-    temp_dfs = []
     try:
+        temp_json = {}
         for i in range(0, temp_count):
             arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
-            temp_dfs.append(pd.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
-        result_df = pd.concat(temp_dfs)
+            with open(working_folder + "/temp_files/temp_{}.json".format(i)) as data_file:
+                temp = json.load(data_file)
+            temp_json = {key: value for (key, value) in (temp_json.items() + temp.items())}
+
+        result_df = pd.DataFrame.from_dict(temp_json)
 
         result_df.index = range(0, len(result_df.index))
         result_df = result_df.fillna(np.nan)
@@ -256,40 +269,82 @@ def arxiv_cleanup(working_folder, earliest_date=None, latest_date=None,
     logging.config.dictConfig(config)
     arxiv_logger = logging.getLogger(__name__ + "_cleanup")
 
-    if not remove_columns:
-        remove_columns = [u'abstract', u'affiliations', u'link_abstract', u'link_doi', u'link_pdf', u'comment']
-
     # Read in stage_1 raw file
     try:
         stage_1_raw = pd.read_json(working_folder + "/stage_1_raw.json")
     except Exception, e:
-        arxiv_logger.exception("Could not load stage_1_raw file")
+        arxiv_logger.exception("Could not load stage_1_raw file. Exiting...")
+        sys.exit("Could not load stage_1_raw file")
     else:
         arxiv_logger.info("Stage_1_raw successfully loaded")
 
+    if not remove_columns:
+        remove_columns = eval(Config.get('data_settings', 'remove_cols'))
     stage_1 = clean_dataset(stage_1_raw, arxiv_logger, earliest_date, latest_date, remove_columns)
+
+    stage_1['submitted'] = pd.to_datetime(stage_1['submitted'], unit="ms")
+    arxiv_ids = []
+    for original_arxiv in stage_1['id'].values:
+        found_regex = regex_new_arxiv.findall(original_arxiv)
+        if found_regex:
+            arxiv_id = found_regex[0]
+        else:
+            found_regex = regex_old_arxiv.findall(original_arxiv)
+            if found_regex:
+                arxiv_id = found_regex[0]
+            else:
+                arxiv_id = "parse_failed"
+        arxiv_ids.append(arxiv_id)
+    stage_1['arxiv_id'] = pd.Series(arxiv_ids, index=stage_1.index)
 
     try:
         stage_1.to_json(working_folder + "/stage_1.json")
-        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8", sep=";", index=False)
+        stage_1.to_csv(working_folder + "/stage_1.csv", encoding="utf-8",
+                       sep=Config.get("csv", "sep_char"), index=False)
     except Exception, e:
         arxiv_logger.exception("Could not write all output files")
     else:
         arxiv_logger.info("Wrote json and csv output files")
 
 
-def test_merge(temp_count, timestamp):
+def test_merge(timestamp):
+    """
+    Call manually if automatic merging of json files fails.
+
+    :param timestamp: The timestamp of the crawl process that failed to merge the temporary json
+    :return: <str> - Working folder
+    """
+
     working_folder = base_directory + timestamp
     config = logging_confdict(working_folder, __name__)
     logging.config.dictConfig(config)
     arxiv_logger = logging.getLogger(__name__)
 
-    temp_dfs = []
+    from path import Path
+
+    temp_files = list(Path(working_folder + "/temp_files/").files("*.json"))
+
     try:
-        for i in range(0, temp_count):
-            arxiv_logger.debug(working_folder + "/temp_files/temp_{}.json".format(i))
-            temp_dfs.append(pd.read_json(working_folder + "/temp_files/temp_{}.json".format(i)))
-        result_df = pd.concat(temp_dfs)
+        temp_jsons = []
+
+        for idx, temp_file in enumerate(temp_files):
+            arxiv_logger.debug(temp_file)
+            with open(temp_file) as data_file:
+                temp = json.load(data_file)
+            temp_jsons.append(temp)
+
+        temp_json = temp_jsons[0]
+        for d in temp_jsons[1:-1]:
+            for key, val_dict in d.items():
+                new_dict = {}
+                offset = len(temp_json[key].values())
+                for doc_id in val_dict.keys():
+                    new_doc_id = offset + int(doc_id)
+                    new_dict[new_doc_id] = val_dict.pop(doc_id)
+                temp_json[key].update(new_dict)
+            print("Length of concatenated dataset: ", len(temp_json['id'].keys()))
+
+        result_df = pd.DataFrame.from_dict(temp_json)
 
         result_df.index = range(0, len(result_df.index))
         result_df = result_df.fillna(np.nan)

@@ -103,10 +103,10 @@ ARXIV_CATS = {'astro-ph': {'name': 'Astrophysics',
                                  'SD': 'Sound',
                                  'SE': 'Software Engineering'}},
               'gr-qc': {'name': 'General Relativity and Quantum Cosmology'},
-              'hep-ex': {'name': 'High Energy Physics'},
-              'hep-lat': {'name': 'High Energy Physics'},
-              'hep-ph': {'name': 'High Energy Physics'},
-              'hep-th': {'name': 'High Energy Physics'},
+              'hep-ex': {'name': 'High Energy Physics - Experiment'},
+              'hep-lat': {'name': 'High Energy Physics - Lattice'},
+              'hep-ph': {'name': 'High Energy Physics - Phenomenology'},
+              'hep-th': {'name': 'High Energy Physics - Theory'},
               'math': {'name': 'Mathematics',
                        'subcats': {'AC': 'Commutative Algebra',
                                    'AG': 'Algebraic Geometry',
@@ -224,8 +224,11 @@ def get_subcat_fullname(subcat):
         parts = subcat.split(".")
         name = ARXIV_CATS[parts[0]]['name']
         subname = ARXIV_CATS[parts[0]]['subcats'][parts[1]]
-
         return unicode(name + " - " + subname)
+    else:
+        return ARXIV_CATS[subcat]['name']
+
+
 
 
 def clean_dataset(df, logger, earliest_date, latest_date,

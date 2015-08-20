@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""
+This module provides multiprocessed crossref crawling. Multiprocessing -> not so nice logging... TODO
+"""
 
 from __future__ import print_function, division
 
@@ -10,15 +13,17 @@ import datetime
 import threading
 import multiprocessing as mp
 import Queue
+from path import Path
 
 import numpy as np
 import pandas as pd
 
 from rpy2.robjects.packages import SignatureTranslatedAnonymousPackage
 import rpy2.robjects as rpy2_objects
-import rpy2.robjects.numpy2ri
-rpy2.robjects.numpy2ri.activate()
-import pandas.rpy.common as com
+from rpy2.robjects import pandas2ri, numpy2ri
+
+numpy2ri.activate()
+pandas2ri.activate()
 
 import gc
 import csv
@@ -28,6 +33,7 @@ import logging.config
 from logging_dict import logging_confdict
 
 import configparser
+
 Config = configparser.ConfigParser()
 Config.read('../../config.ini')
 base_directory = Config.get('directories', 'base')
@@ -35,49 +41,81 @@ base_directory = Config.get('directories', 'base')
 from utils import levenshtein_ratio, LR, clean_dataset
 
 
+# Helper functions
+def get_crawl_speed(average_speed, smoothing_factor, last_speed):
+    return smoothing_factor * last_speed + (1 - smoothing_factor) * average_speed
+
+
+def get_hms(seconds):
+    eta_h = int(seconds / 60 / 60)
+    eta_m = int(seconds / 60 - eta_h * 60)
+    eta_s = int(seconds - eta_h * 3600 - eta_m * 60)
+    return eta_h, eta_m, eta_s
+
+
+def get_eta(average_speed, tps, doc_count, progress_count, eta_weight=0.2):
+    eta_h, eta_m, eta_s = get_hms((doc_count - progress_count) * average_speed)
+    tt_eta_h, tt_eta_m, tt_eta_s = get_hms(tps / progress_count * doc_count - tps)
+    eta_h = eta_weight * eta_h + (1 - eta_weight) * tt_eta_h
+    eta_m = eta_weight * eta_m + (1 - eta_weight) * tt_eta_m
+    eta_s = eta_weight * eta_s + (1 - eta_weight) * tt_eta_s
+
+    return eta_h, eta_m, eta_s
+
+
+# Threads
 class ProcessingThread(threading.Thread):
-    def __init__(self, working_folder, input_queue, output_queue):
+    def __init__(self, working_folder, input_queue, output_queue, doc_count):
         threading.Thread.__init__(self)
         self.event = threading.Event()
         self.iq = input_queue
-        self.oq = output_queue
+        # self.oq = output_queue
         self.wdir = working_folder
+        self.doc_count = doc_count
+        self.progress_count = 1
+        self.average_speed = None
+        self.pid = os.getpid()
 
     def run(self):
         print("running")
-        with open(self.wdir + "/crossref_crawl_summary.csv", "ab") as f:
+        with open(self.wdir + "/temp/proces_{}.csv".format(self.pid), "ab") as f:
             writer = csv.writer(f, delimiter=";")
+            tts = time.time()
             while True:
                 try:
+                    ts = time.time()
                     result = self.iq.get_nowait()
-
                     lr = levenshtein_ratio(result['orig_title'], result['cr_title'])
+
+                    line = [result['index'],
+                            result['cr_title'].encode('utf-8'),
+                            result['orig_title'].encode('utf-8'),
+                            result['cr_doi'].encode('utf-8'),
+                            lr]
+
                     if lr <= LR:
-                        line = [result['index'],
-                                result['cr_title'].encode('utf-8'),
-                                result['orig_title'].encode('utf-8'),
-                                result['cr_doi'].encode('utf-8'),
-                                lr,
-                                True]
-                        result = {'idx': result['index'],
-                                  'cr_title': result['cr_title'],
-                                  'cr_doi': result['cr_doi'],
-                                  'lr': lr}
+                        line.append(True)
                     else:
-                        line = [result['index'],
-                                result['cr_title'].encode('utf-8'),
-                                result['orig_title'].encode('utf-8'),
-                                result['cr_doi'].encode('utf-8'),
-                                lr,
-                                False]
-                        result = {'idx': result['index'],
-                                  'cr_title': np.nan,
-                                  'cr_doi': np.nan,
-                                  'lr': lr}
+                        line.append(False)
 
                     writer.writerow(line)
-                    self.oq.put(result)
+                    f.flush()
+                    # self.oq.put(result)
                     self.iq.task_done()
+
+                    passed_time = time.time() - ts
+                    tps = time.time() - tts
+                    if not self.average_speed:
+                        self.average_speed = passed_time
+                    else:
+                        self.average_speed = get_crawl_speed(self.average_speed, 0.8, passed_time)
+
+                    eta_h, eta_m, eta_s = get_eta(self.average_speed, tps, self.doc_count, self.progress_count)
+
+                    print("PID {}: {}/{} - ETA: {}h {:0>2}m {:0>2}s".format(self.pid,
+                                                                            self.progress_count, self.doc_count,
+                                                                            int(eta_h), int(eta_m), int(eta_s)))
+                    self.progress_count += 1
 
                 except Queue.Empty:
                     if self.event.is_set():
@@ -101,17 +139,16 @@ class CrossrefAPIThread(threading.Thread):
         while True:
             try:
                 self.idx, self.author, self.title, self.date = self.q.get_nowait()
-                temp = com.convert_robj(self.doi_lookuper.crossref(self.author,
-                                                                   self.title,
-                                                                   self.date.strftime("%Y-%m-%d %H:%M:%S")))
+                temp = pandas2ri.ri2py(self.doi_lookuper.crossref(self.author,
+                                                                  self.title,
+                                                                  self.date.strftime("%Y-%m-%d %H:%M:%S")))
 
-                # Use index 1 because R is 1-indexed -> 0 is not the first element
                 try:
-                    cr_title = temp['title'][1]
+                    cr_title = temp['title'][0]
                 except KeyError:
                     cr_title = ""
                 try:
-                    cr_doi = temp['DOI'][1]
+                    cr_doi = temp['DOI'][0]
                 except KeyError:
                     cr_doi = ""
 
@@ -141,13 +178,15 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
     cr_to_process = Queue.Queue()
     process_to_result = Queue.Queue()
 
+    doc_count = 0
     for idx, author, title, date in zip(index, authors, titles, submitted):
         tokens = author.split("|")
         if len(tokens) >= 15:
             author = "|".join(tokens[:15])
         cr_input_queue.put((idx, author, title, date))
+        doc_count += 1
 
-    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result)
+    process_thread = ProcessingThread(working_folder, cr_to_process, process_to_result, doc_count)
 
     print("\nStarting crossref crawl process...")
     crossref_threads = []
@@ -165,6 +204,7 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
         thread.join()
 
     process_thread.event.set()
+
     process_thread.join()
 
     results = []
@@ -174,7 +214,7 @@ def crossref_lookup(working_folder, index, authors, titles, submitted, num_threa
     return results
 
 
-def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
+def crossref_crawl(num_processes=1, num_threads=1, input_folder=None, continue_folder = None):
     """
     DOI Lookup interfaces to different DOI providers.
     Currently implemented: CrossRef.
@@ -193,30 +233,48 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
     timestamp = datetime.datetime.fromtimestamp(ts_start).strftime('%Y-%m-%d_%H-%M-%S')
 
     # Create folder structure
-    global base_folder
     if not input_folder:
-        all_subdirs = [base_directory + d for d in os.listdir(base_directory) if os.path.isdir(base_directory + d)]
-        latest_subdir = max(all_subdirs, key=os.path.getmtime)
+        all_subdirs = [d for d in Path(base_directory).listdir() if d.isdir()]
+        latest_subdir = max(all_subdirs, key=Path.getmtime)
         base_folder = latest_subdir + "/"
     else:
-        base_folder = base_directory + input_folder
+        base_folder = input_folder
         if base_folder[-1] != "/":
             base_folder += "/"
 
-    working_folder = base_folder + timestamp
-    os.mkdir(working_folder)
+    if continue_folder:
+        working_folder = continue_folder
+        temp_folder = working_folder + "/temp/"
+    else:
+        working_folder = base_folder + timestamp
+        temp_folder = working_folder + "/temp/"
+        Path(working_folder).mkdir()
+        Path(temp_folder).mkdir()
 
-    with open(working_folder + "/crossref_crawl_summary.csv", "wb") as f:
-        writer = csv.writer(f, delimiter=";")
-        header = ["Index", "Title", "Orig_title", "DOI", "LR", "Match"]
-        writer.writerow(header)
+    skip_indices = set()
+    if continue_folder:
+        # Setup logging
+        config = logging_confdict(working_folder, __name__)
+        logging.config.dictConfig(config)
+        cr_logger = logging.getLogger(__name__)
 
-    # Setup logging
-    config = logging_confdict(working_folder, __name__)
-    logging.config.dictConfig(config)
-    cr_logger = logging.getLogger(__name__)
+        cr_logger.info("Continuing crawl in <<" + working_folder + ">>")
 
-    cr_logger.info("\nCreated new folder: <<" + working_folder + ">>")
+        for temp_file in Path(temp_folder).files("*.csv"):
+            with open(temp_file, "rb") as tempfile:
+                r = csv.reader(tempfile, delimiter=";")
+                for line in r:
+                    if len(line) == 6:
+                        if line[-1] == "False" or line[-1] == "True":
+                            skip_indices.add(int(line[0]))
+
+    else:
+        # Setup logging
+        config = logging_confdict(working_folder, __name__)
+        logging.config.dictConfig(config)
+        cr_logger = logging.getLogger(__name__)
+
+        cr_logger.info("\nCreated new folder: <<" + working_folder + ">>")
 
     # Read in stage 1 file
     cr_logger.debug("\nReading in stage_1.json ... (Might take a few seconds)")
@@ -227,45 +285,69 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
         sys.exit("Could not read stage_1 file")
 
     stage_1.sort_index(inplace=True)
-    stage_1.index = range(0, len(stage_1.index))
-
-    # stage_1 = stage_1[300:700]
-
     stage_1['submitted'] = pd.to_datetime(stage_1['submitted'], unit="ms")
 
-    df_ranges = range(0, len(stage_1.index), len(stage_1.index) // num_processes) + [len(stage_1.index)]
+    stage_1.index = range(0, len(stage_1.index))
+
+    crawl_stage_1 = stage_1.drop(skip_indices)
+
+    cr_logger.info("\nSpawning {} processes - output will be cluttered... :S\n".format(num_processes))
+    # Split df into n sub-dataframes for n processes
+    df_ranges = range(0, len(crawl_stage_1.index), len(crawl_stage_1.index) // num_processes+1)
+    df_ranges = df_ranges + [len(crawl_stage_1.index)]
     pool_args = []
-    for idx in range(num_processes):
-        cr_logger.info("Starting process {}".format(idx))
-        indices = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].index
-        authors = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].authors
-        titles = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].title
-        submitted = stage_1.loc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
-        pool_args.append([indices, authors, titles, submitted, ])
+    if len(df_ranges) == 1:
+        indices = []
+        authors = []
+        titles = []
+        submitted = []
+        pool_args.append([indices, authors, titles, submitted])
+    else:
+        for idx in range(num_processes):
+            cr_logger.info("Starting process {}".format(idx))
+            indices = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].index.values
+            authors = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].authors
+            titles = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].title
+            submitted = crawl_stage_1.iloc[range(df_ranges[idx], df_ranges[idx + 1])].submitted
+            pool_args.append([indices, authors, titles, submitted])
 
     pool = mp.Pool(processes=num_processes)
-    results = [pool.apply_async(crossref_lookup,
-                                args=(working_folder, x[0], x[1], x[2], x[3], num_threads)) for x in pool_args]
+    for x in pool_args:
+        pool.apply_async(crossref_lookup, args=(working_folder, x[0], x[1], x[2], x[3], num_threads))
+
     pool.close()
     pool.join()
 
     cr_logger.info("All processes finished")
 
     output = []
-    for p in results:
-        output.extend(p.get())
+    for temp_file in Path(temp_folder).files("*.csv"):
+        with open(temp_file, "rb") as tempfile:
+            r = csv.reader(tempfile, delimiter=";")
+            for line in r:
+                if len(line) == 6:
+                    result = {'idx': int(line[0]),
+                              'cr_title': line[1],
+                              'cr_doi': line[3],
+                              'lr': line[4]}
+                    if line[-1] == "False":
+                        result['cr_title'] = np.nan
+                        result['cr_doi'] = np.nan
+                    output.append(result)
 
     cr_data = pd.DataFrame(output)
-    cr_data = cr_data.set_index(["idx"])
+    cr_data = cr_data.set_index("idx", drop=True)
 
     cr_logger.info("\nMerging stage_1 dataset and crossref results")
 
     stage_2_raw = pd.merge(stage_1, cr_data, left_index=True, right_index=True, how='left')
+    print(stage_2_raw)
     stage_2_raw.sort_index(inplace=True)
 
     try:
         stage_2_raw.to_json(working_folder + "/stage_2_raw.json")
-        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8", sep=";", index=False)
+        stage_2_raw.to_csv(working_folder + "/stage_2_raw.csv", encoding="utf-8",
+                           sep=Config.get("csv", "sep_char"), index=False)
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
@@ -275,7 +357,7 @@ def crossref_crawl(num_processes=1, num_threads=1, input_folder=None):
 
 
 def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
-                remove_columns=None):
+                     remove_columns=None):
     """
     Cleans the crawl results from crossref.
 
@@ -304,6 +386,8 @@ def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
     else:
         cr_logger.info("Stage_1_raw successfully loaded")
 
+    if not remove_columns:
+        remove_columns = eval(Config.get('data_settings', 'remove_cols'))
     stage_2 = clean_dataset(stage_2_raw, cr_logger, earliest_date, latest_date, remove_columns)
 
     cr_unique_dois = stage_2.cr_doi.unique()
@@ -337,7 +421,9 @@ def crossref_cleanup(working_folder, earliest_date=None, latest_date=None,
 
     try:
         stage_2.to_json(working_folder + "/stage_2.json")
-        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8", sep=";", index=False)
+        stage_2.to_csv(working_folder + "/stage_2.csv", encoding="utf-8",
+                       sep=Config.get("csv", "sep_char"), index=False)
+
     except Exception, e:
         cr_logger.exception("Could not write all output files")
     else:
