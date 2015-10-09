@@ -2,6 +2,8 @@
 
 A python framework to crawl various bibliometric sources.
 
+[![DOI](https://zenodo.org/badge/18705/Bubblbu/crawling-framework.svg)](https://zenodo.org/badge/latestdoi/18705/Bubblbu/crawling-framework)
+
 ## Overview of all implemented interfaces
 
 * **arXiv** - Inital data acquisition
